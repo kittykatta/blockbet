@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlockBet - Minecraft Casino</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        mc: {
+                            dark: '#1e1e1e',      
+                            darker: '#161616',    
+                            light: '#313131',     
+                            green: '#3c8527',     
+                            greenHover: '#4b9b33',
+                            border: '#454545',    
+                            text: '#f1f1f1',
+                            muted: '#a8a8a8',
+                            gold: '#ffd700'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Segoe UI', 'Noto Sans', 'Helvetica', 'Arial', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'mc-btn': 'inset 0 2px 0 rgba(255,255,255,0.2), inset 0 -3px 0 rgba(0,0,0,0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #f1f1f1;
+            overflow: hidden; 
+        }
+
+        ::-webkit-scrollbar {
+            width: 14px;
+            height: 14px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e; 
+            border-left: 1px solid #313131;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #454545; 
+            border: 2px solid #1e1e1e;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555; 
+        }
+
+        .mc-button-green {
+            background-color: #3c8527;
+            color: white;
+            box-shadow: inset 0 2px 0 rgba(255,255,255,0.2), inset 0 -4px 0 rgba(0,0,0,0.3);
+            transition: all 0.1s;
+            text-transform: uppercase;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            border: 2px solid #1e1e1e;
+        }
+        .mc-button-green:hover:not(:disabled) { background-color: #4b9b33; }
+        .mc-button-green:active:not(:disabled) {
+            box-shadow: inset 0 2px 0 rgba(0,0,0,0.3);
+            transform: translateY(2px);
+        }
+        .mc-button-green:disabled {
+            filter: grayscale(100%);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .mc-button-gold {
+            background-color: #d49a00;
+            color: white;
+            box-shadow: inset 0 2px 0 rgba(255,255,255,0.3), inset 0 -4px 0 rgba(0,0,0,0.3);
+            transition: all 0.1s;
+            text-transform: uppercase;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            border: 2px solid #1e1e1e;
+        }
+        .mc-button-gold:hover:not(:disabled) { background-color: #e6a800; }
+        .mc-button-gold:active:not(:disabled) {
+            box-shadow: inset 0 2px 0 rgba(0,0,0,0.3);
+            transform: translateY(2px);
+        }
+
+        .mc-input {
+            background-color: #161616;
+            border: 2px solid #454545;
+            color: white;
+            transition: border-color 0.2s;
+        }
+        .mc-input:focus {
+            border-color: #3c8527;
+            outline: none;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            color: #a8a8a8;
+            border-left: 4px solid transparent;
+            transition: all 0.1s;
+            cursor: pointer;
+            margin-bottom: 2px;
+        }
+        .nav-item:hover {
+            background-color: #313131;
+            color: #f1f1f1;
+        }
+        .nav-item.active {
+            background-color: #313131;
+            color: white;
+            border-left-color: #3c8527;
+            font-weight: bold;
+        }
+
+        .mines-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+            width: 100%;
+            aspect-ratio: 1;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .mine-tile {
+            background-color: #313131;
+            border: 2px solid #454545;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.1s;
+            box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
+        }
+        .mine-tile:hover:not(.revealed) {
+            background-color: #454545;
+            transform: scale(0.98);
+        }
+        .mine-tile.revealed {
+            box-shadow: inset 0 2px 0 rgba(0,0,0,0.2);
+            cursor: default;
+        }
+        .mine-tile.revealed.gem {
+            background-color: #1b4d2a;
+            border-color: #2e8b49;
+        }
+        .mine-tile.revealed.bomb {
+            background-color: #5c1818;
+            border-color: #a82e2e;
+        }
+
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(2px);
+        }
+
+        .hidden { display: none !important; }
+
+        /* Crash Game Graph */
+        #crash-graph-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(to top, #161616, #1e1e1e);
+        }
+        
+        #crash-line {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #crash-rocket {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 48px;
+            height: 48px;
+            transform: translate(-50%, 50%); /* Center on the point */
+            z-index: 10;
+            filter: drop-shadow(0 0 10px rgba(255, 100, 0, 0.5));
+        }
+
+        .crash-text-container {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 20;
+        }
+
+        .crashed-text {
+            color: #ff5555;
+            text-shadow: 0 0 10px rgba(255, 85, 85, 0.5);
+        }
+
+    </style>
+</head>
+<body class="flex h-screen antialiased text-mc-text font-sans selection:bg-mc-green selection:text-white">
+    <div id="announcement-bar" class="hidden fixed top-0 left-0 right-0 z-[100] bg-[#3c8527] text-white text-center font-bold px-4 py-2 shadow-lg"><span id="announcement-text"></span></div>
+
+    <script>
+        // State Management
+        const state = {
+            user: null, 
+            balance: 0,
+            currentGame: 'home',
+            betAmountStr: "100", 
+            
+            mines: {
+                minesCount: 3, active: false, grid: [], multiplier: 1.0, history: []
+            },
+            crash: {
+                active: false, crashed: false, multiplier: 1.0, currentMult: 1.0, 
+                crashPoint: 0, animationFrame: null, startTime: 0,
+                hasBet: false, betAmount: 0, cashedOut: false
+            },
+            coinflip: {
+                choice: 'gold', isFlipping: false
+            }
+        };
+
+        // LocalStorage handling
+        function loadSaveData() {
+            const saved = localStorage.getItem('blockbet_save');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    if (data.user && data.balance !== undefined) {
+                        state.user = data.user;
+                        state.balance = data.balance;
+                        applyLoginState(data.user.username, false);
+                    }
+                } catch(e) { console.error("Save corrupted"); }
+            }
+        }
+
+        function saveGameData() {
+            if (state.user) {
+                localStorage.setItem('blockbet_save', JSON.stringify({
+                    user: state.user,
+                    balance: state.balance
+                }));
+            }
+        }
+
+        // Utility
+        function formatMoney(amount) {
+            return '$' + parseFloat(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        const LIVE_STATS_KEY = 'blockbet_live_stats_v1';
+        const ONLINE_KEY = 'blockbet_online_tabs_v1';
+        const tabId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+
+        function todayKey() { return new Date().toISOString().slice(0, 10); }
+        function getLiveStats() {
+            const fallback = { day: todayKey(), mostGained: 0, totalWon: 0, gamesPlayed: 0 };
+            try {
+                const saved = JSON.parse(localStorage.getItem(LIVE_STATS_KEY));
+                return saved && saved.day === todayKey() ? { ...fallback, ...saved } : fallback;
+            } catch { return fallback; }
+        }
+        function updateLiveStatsDisplay() {
+            const stats = getLiveStats();
+            const online = getOnlineCount();
+            const mg = document.getElementById('stat-most-gained');
+            const tw = document.getElementById('stat-total-won');
+            const gp = document.getElementById('stat-games-played');
+            const oc = document.getElementById('online-player-count');
+            const soc = document.getElementById('stat-online-count');
+            if (mg) mg.textContent = formatMoney(stats.mostGained);
+            if (tw) tw.textContent = formatMoney(stats.totalWon);
+            if (gp) gp.textContent = stats.gamesPlayed.toLocaleString();
+            if (oc) oc.textContent = online.toLocaleString();
+            if (soc) soc.textContent = online.toLocaleString();
+        }
+        function recordGameResult(profit) {
+            const stats = getLiveStats();
+            stats.gamesPlayed += 1;
+            if (profit > 0) {
+                stats.totalWon += profit;
+                stats.mostGained = Math.max(stats.mostGained, profit);
+            }
+            localStorage.setItem(LIVE_STATS_KEY, JSON.stringify(stats));
+            updateLiveStatsDisplay();
+        }
+        function getOnlineCount() {
+            try {
+                const now = Date.now();
+                const tabs = JSON.parse(localStorage.getItem(ONLINE_KEY) || '{}');
+                for (const id in tabs) if (now - tabs[id] > 15000) delete tabs[id];
+                return Math.max(1, Object.keys(tabs).length);
+            } catch { return 1; }
+        }
+        function heartbeatOnline() {
+            try {
+                const tabs = JSON.parse(localStorage.getItem(ONLINE_KEY) || '{}');
+                const now = Date.now();
+                for (const id in tabs) if (now - tabs[id] > 15000) delete tabs[id];
+                tabs[tabId] = now;
+                localStorage.setItem(ONLINE_KEY, JSON.stringify(tabs));
+            } catch {}
+            updateLiveStatsDisplay();
+        }
+        window.addEventListener('beforeunload', () => {
+            try {
+                const tabs = JSON.parse(localStorage.getItem(ONLINE_KEY) || '{}');
+                delete tabs[tabId];
+                localStorage.setItem(ONLINE_KEY, JSON.stringify(tabs));
+            } catch {}
+        });
+
+        function updateBalanceDisplay() {
+            document.querySelectorAll('.user-balance').forEach(el => el.textContent = formatMoney(state.balance));
+            saveGameData();
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-6 right-6 px-4 py-3 rounded-md shadow-lg z-50 text-white font-bold transition-all duration-300 transform translate-x-full border-2 ${type === 'success' ? 'bg-[#2b2b2b] border-[#454545]' : 'bg-[#5c1818] border-[#a82e2e]'}`;
+            const icon = type === 'success' ? '<i class="fa-solid fa-check text-mc-green mr-2"></i>' : '<i class="fa-solid fa-xmark text-red-500 mr-2"></i>';
+            toast.innerHTML = `${icon} ${message}`;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => { toast.classList.remove('translate-x-full'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+
+        // Image fallbacks: external Minecraft image hosts can occasionally block hotlinking.
+        const FALLBACK_PIXEL_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="#2b2b2b"/><rect x="8" y="8" width="48" height="48" fill="#555"/><rect x="16" y="16" width="32" height="32" fill="#888"/><rect x="24" y="24" width="16" height="16" fill="#ccc"/></svg>`)}`;
+        function installImageFallbacks() {
+            document.querySelectorAll('img').forEach(img => {
+                img.addEventListener('error', () => {
+                    if (img.dataset.fallbackApplied) return;
+                    img.dataset.fallbackApplied = '1';
+                    img.src = FALLBACK_PIXEL_ICON;
+                });
+            });
+        }
+
+
+        const ADMIN_USERNAME = 'boom154';
+        const ANNOUNCEMENT_KEY = 'blockbet_announcement_v1';
+        const CASH_STATUS_KEY = 'blockbet_cash_status_v1';
+
+        function isAdmin() { return !!state.user && state.user.username.toLowerCase() === ADMIN_USERNAME; }
+        function getAnnouncement() {
+            try {
+                const a = JSON.parse(localStorage.getItem(ANNOUNCEMENT_KEY) || 'null');
+                if (!a || !a.message || (a.expiresAt && Date.now() > a.expiresAt)) { localStorage.removeItem(ANNOUNCEMENT_KEY); return null; }
+                return a;
+            } catch { return null; }
+        }
+        function renderAnnouncement() {
+            const a = getAnnouncement();
+            const bar = document.getElementById('announcement-bar');
+            const text = document.getElementById('announcement-text');
+            if (!bar || !text) return;
+            if (a) { text.textContent = a.message; bar.classList.remove('hidden'); } else bar.classList.add('hidden');
+        }
+        function getCashStatus() { try { return JSON.parse(localStorage.getItem(CASH_STATUS_KEY) || '{"depositsPaused":false,"withdrawalsPaused":false}'); } catch { return {depositsPaused:false,withdrawalsPaused:false}; } }
+        function saveCashStatus(v) { localStorage.setItem(CASH_STATUS_KEY, JSON.stringify(v)); }
+        function openAdminPanel() {
+            if (!isAdmin()) return;
+            const a = getAnnouncement(); const c = getCashStatus();
+            document.getElementById('admin-announcement').value = a?.message || '';
+            document.getElementById('admin-duration').value = a?.minutes || 60;
+            document.getElementById('pause-deposits').checked = !!c.depositsPaused;
+            document.getElementById('pause-withdrawals').checked = !!c.withdrawalsPaused;
+            document.getElementById('admin-modal').classList.remove('hidden');
+        }
+        function saveAdminSettings() {
+            if (!isAdmin()) return;
+            const message = document.getElementById('admin-announcement').value.trim();
+            const minutes = Math.max(1, Number(document.getElementById('admin-duration').value) || 60);
+            if (message) localStorage.setItem(ANNOUNCEMENT_KEY, JSON.stringify({ message, minutes, expiresAt: Date.now() + minutes*60000 }));
+            else localStorage.removeItem(ANNOUNCEMENT_KEY);
+            saveCashStatus({ depositsPaused: document.getElementById('pause-deposits').checked, withdrawalsPaused: document.getElementById('pause-withdrawals').checked });
+            renderAnnouncement(); document.getElementById('admin-modal').classList.add('hidden'); showToast('Admin settings saved.');
+        }
+        function openCashModal(type) {
+            if (!requireAuth()) return;
+            const c = getCashStatus();
+            if ((type==='deposit' && c.depositsPaused) || (type==='withdraw' && c.withdrawalsPaused)) return showToast(`${type === 'deposit' ? 'Deposits' : 'Withdrawals'} are currently paused.`, 'error');
+            document.getElementById('cash-modal-title').textContent = type === 'deposit' ? 'DEPOSIT (DEMO)' : 'WITHDRAW (DEMO)';
+            document.getElementById('cash-modal').dataset.type = type;
+            document.getElementById('cash-amount').value = '';
+            document.getElementById('cash-modal').classList.remove('hidden');
+        }
+        function submitCashRequest() {
+            const type = document.getElementById('cash-modal').dataset.type;
+            const amount = Number(document.getElementById('cash-amount').value);
+            if (!Number.isFinite(amount) || amount <= 0) return showToast('Enter a valid amount.', 'error');
+            const c = getCashStatus();
+            if ((type==='deposit' && c.depositsPaused) || (type==='withdraw' && c.withdrawalsPaused)) return showToast('That action is currently paused.', 'error');
+            const code = `BB-${Math.random().toString(36).slice(2,8).toUpperCase()}-${Date.now().toString().slice(-5)}`;
+            document.getElementById('cash-code').textContent = code;
+            document.getElementById('cash-result').classList.remove('hidden');
+            showToast(`Request code generated for ${formatMoney(amount)}.`);
+        }
+
+        // Auth
+        function applyLoginState(username, isNew = false) {
+            document.getElementById('auth-modal').classList.add('hidden');
+            document.getElementById('logged-out-topbar').classList.add('hidden');
+            document.getElementById('logged-in-topbar').classList.remove('hidden');
+            document.getElementById('display-username').textContent = username;
+            const adminBtn = document.getElementById('admin-button');
+            if (adminBtn) adminBtn.classList.toggle('hidden', username.toLowerCase() !== ADMIN_USERNAME);
+            renderAnnouncement();
+            
+            // Fetch Avatar from API
+            const avatar = document.getElementById('profile-avatar');
+            avatar.onerror = () => { avatar.onerror = null; avatar.src = `https://mc-heads.net/avatar/${encodeURIComponent(username)}/64`; };
+            avatar.src = `https://minotar.net/avatar/${encodeURIComponent(username)}/64`;
+            
+            updateBalanceDisplay();
+            if(isNew) showToast(`Welcome ${username}! Received $5.00M bonus.`);
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('mc-username').value.trim();
+            if (username) {
+                state.user = { username };
+                state.balance = 5000000; // 5M signup
+                applyLoginState(username, true);
+            }
+        }
+
+        function handleLogout() {
+            state.user = null;
+            state.balance = 0;
+            localStorage.removeItem('blockbet_save');
+            
+            document.getElementById('logged-in-topbar').classList.add('hidden');
+            document.getElementById('logged-out-topbar').classList.remove('hidden');
+            
+            if(state.currentGame !== 'home') navigateTo('home');
+            showToast('Logged out.');
+        }
+
+        function requireAuth() {
+            if (!state.user) {
+                document.getElementById('auth-modal').classList.remove('hidden');
+                return false;
+            }
+            return true;
+        }
+
+        // Navigation
+        function navigateTo(view) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const activeNav = document.getElementById(`nav-${view}`);
+            if(activeNav) activeNav.classList.add('active');
+
+            document.querySelectorAll('.content-section').forEach(el => el.classList.add('hidden'));
+            
+            // Prevent leaving game if active (basic protection)
+            if (state.currentGame === 'mines' && state.mines.active && view !== 'mines') {
+                showToast("Finish your Mines game first!", "error");
+                return;
+            }
+            if (state.currentGame === 'crash' && state.crash.hasBet && !state.crash.cashedOut && state.crash.active) {
+                showToast("Wait for Crash round to end!", "error");
+                return;
+            }
+
+            state.currentGame = view;
+
+            if (view === 'home') {
+                document.getElementById('home-view').classList.remove('hidden');
+                document.getElementById('side-bet-panel').classList.add('hidden');
+            } else {
+                document.getElementById('game-view').classList.remove('hidden');
+                document.getElementById('side-bet-panel').classList.remove('hidden');
+                
+                document.querySelectorAll('.game-canvas').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('.game-controls').forEach(el => el.classList.add('hidden'));
+                
+                document.getElementById(`canvas-${view}`).classList.remove('hidden');
+                document.getElementById(`controls-${view}`).classList.remove('hidden');
+                
+                const titles = { 'mines': 'MINES', 'crash': 'CRASH', 'coinflip': 'COINFLIP' };
+                document.getElementById('game-header-title').textContent = titles[view] || view;
+
+                if(view === 'mines' && !state.mines.active) renderMinesGrid();
+                if(view === 'crash') setupCrashCanvas();
+            }
+        }
+
+        // Betting Input
+        function handleBetInput(val) {
+            let cleanVal = val.replace(/[^0-9.]/g, '');
+            const parts = cleanVal.split('.');
+            if (parts.length > 2) cleanVal = parts[0] + '.' + parts.slice(1).join('');
+            
+            state.betAmountStr = cleanVal;
+            document.getElementById('universal-bet-input').value = state.betAmountStr;
+        }
+
+        function modifyBet(action) {
+            let current = parseFloat(state.betAmountStr) || 0;
+            if (action === 'half') current /= 2;
+            if (action === 'double') current *= 2;
+            if (action === 'max') current = state.balance;
+            if (action === 'clear') current = 0;
+            
+            state.betAmountStr = current % 1 === 0 ? current.toString() : current.toFixed(2);
+            document.getElementById('universal-bet-input').value = state.betAmountStr;
+        }
+
+        function getBetAmount() {
+            const amt = parseFloat(state.betAmountStr);
+            if (isNaN(amt) || amt <= 0) {
+                showToast('Enter a valid bet amount', 'error');
+                return null;
+            }
+            if (amt > state.balance) {
+                showToast('Insufficient balance', 'error');
+                return null;
+            }
+            return amt;
+        }
+    </script>
+
+    <aside class="w-[280px] bg-mc-darker border-r border-mc-border flex flex-col h-full shrink-0 z-20">
+        
+        <div class="h-16 flex items-center justify-between px-4 border-b border-mc-border bg-[#111] cursor-pointer hover:bg-[#1a1a1a] transition-colors">
+            <div class="flex items-center">
+                <img src="https://minecraft.wiki/images/grass_block" class="w-6 h-6 mr-3 pixelated">
+                <div>
+                    <div class="text-xs text-mc-muted font-bold">BLOCKBET</div>
+                    <div class="text-sm font-semibold">Casino</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto py-2">
+            
+            <div class="mb-4">
+                <div id="nav-home" onclick="navigateTo('home')" class="nav-item active">
+                    <i class="fa-solid fa-house w-6 text-center"></i>
+                    <span class="font-bold text-sm tracking-wide ml-2">HOME</span>
+                </div>
+            </div>
+
+            <div>
+                <div class="px-4 py-2 text-[10px] font-bold text-[#666] uppercase tracking-wider">Originals</div>
+                
+                <div id="nav-mines" onclick="navigateTo('mines')" class="nav-item">
+                    <img src="https://minecraft.wiki/images/tnt" class="w-5 h-5 mr-3 pixelated">
+                    <span class="font-bold text-sm tracking-wide">MINES</span>
+                </div>
+
+                <div id="nav-crash" onclick="navigateTo('crash')" class="nav-item">
+                    <img src="https://minecraft.wiki/images/firework_rocket" class="w-5 h-5 mr-3 pixelated" style="transform: rotate(45deg);">
+                    <span class="font-bold text-sm tracking-wide">CRASH</span>
+                </div>
+
+                <div id="nav-coinflip" onclick="navigateTo('coinflip')" class="nav-item">
+                    <img src="https://minecraft.wiki/images/gold_ingot" class="w-5 h-5 mr-3 pixelated">
+                    <span class="font-bold text-sm tracking-wide">COINFLIP</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-mc-border bg-[#111]">
+            <div class="px-4 py-3 flex justify-between items-center text-xs text-[#666]">
+                <span>Status: <span class="text-mc-green font-bold">API Online</span></span>
+                <span>v2.0.1</span>
+            </div>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col min-w-0 bg-mc-dark relative">
+        
+        <!-- Top Nav -->
+        <header class="h-16 flex items-center justify-between px-6 bg-[#161616] border-b border-mc-border shrink-0">
+            <div class="flex items-center">
+                <div class="flex items-center px-3 py-1.5 bg-[#1e1e1e] border border-mc-border rounded-sm shadow-inner">
+                    <div class="w-2 h-2 bg-mc-green rounded-full mr-2 shadow-[0_0_5px_#3c8527] animate-pulse"></div>
+                    <span class="text-xs font-bold text-mc-muted"><span id="online-player-count">0</span> players online</span>
+                </div>
+            </div>
+
+            <div class="flex items-center">
+                
+                <!-- Logged Out -->
+                <div id="logged-out-topbar" class="flex space-x-3">
+                    <button onclick="document.getElementById('auth-modal').classList.remove('hidden')" class="px-6 py-2 bg-[#313131] hover:bg-[#454545] border border-[#555] text-white font-bold text-sm shadow-mc-btn transition-colors">
+                        LOGIN
+                    </button>
+                </div>
+
+                <!-- Logged In -->
+                <div id="logged-in-topbar" class="hidden flex items-center space-x-4">
+                    
+                    <div class="flex items-center bg-[#1e1e1e] border border-[#313131] rounded-sm p-1 shadow-inner">
+                        <div class="bg-[#2b2b2b] px-3 py-1 flex items-center text-sm font-bold text-white shadow-inner border border-[#111]">
+                            <span class="text-mc-muted mr-1">$</span>
+                            <span class="user-balance text-mc-gold tracking-wide">0.00</span>
+                        </div>
+                        <button onclick="openCashModal('deposit')" class="ml-1 px-4 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">DEPOSIT</button>
+                        <button onclick="openCashModal('withdraw')" class="ml-1 px-4 py-1 bg-[#8a5a18] hover:bg-[#a36c1f] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">WITHDRAW</button>
+                        <button id="admin-button" onclick="openAdminPanel()" class="hidden ml-1 px-3 py-1 bg-[#6b3fa0] hover:bg-[#7b4bb0] text-white font-bold text-xs rounded-sm">ADMIN</button>
+                    </div>
+
+                    <div class="flex items-center space-x-3 bg-[#1e1e1e] p-1.5 rounded-sm border border-mc-border shadow-inner relative group cursor-pointer">
+                        <img id="profile-avatar" src="" class="w-8 h-8 pixelated border border-[#111] bg-[#444]" alt="Avatar">
+                        <span id="display-username" class="text-sm font-bold pr-2 text-white"></span>
+                        
+                        <!-- Dropdown -->
+                        <div class="absolute top-full right-0 mt-2 w-48 bg-[#161616] border border-mc-border shadow-xl hidden group-hover:block z-50">
+                            <div onclick="handleLogout()" class="px-4 py-3 text-sm text-[#ff5555] hover:bg-[#313131] font-bold border-b border-[#313131]">
+                                <i class="fa-solid fa-right-from-bracket mr-2"></i> Logout
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto">
+            
+            <div id="home-view" class="content-section p-8 max-w-6xl mx-auto space-y-8">
+                
+                <div class="relative w-full h-[350px] bg-[#161616] border border-mc-border rounded-sm overflow-hidden shadow-lg flex flex-col justify-end">
+                    <!-- Techy dark background pattern -->
+                    <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#454545 1px, transparent 1px); background-size: 20px 20px;"></div>
+                    <div class="absolute inset-0 bg-gradient-to-r from-[#111] via-[#161616]/80 to-transparent"></div>
+                    
+                    <div class="relative z-10 p-10 flex justify-between items-center w-full">
+                        <div class="max-w-2xl">
+                            <div class="flex items-center space-x-2 mb-4">
+                                <i class="fa-solid fa-gamepad text-mc-gold text-xs"></i>
+                                <span class="text-xs font-bold text-mc-gold uppercase tracking-wider">Minecraft-style demo casino</span>
+                            </div>
+                            <h1 class="text-5xl font-black text-white mb-4 tracking-tight drop-shadow-md">
+                                Play with <span class="text-cyan-400">fake money.</span>
+                            </h1>
+                            <p class="text-base text-[#a8a8a8] mb-8 font-semibold max-w-lg leading-relaxed">
+                                Pick a game, place a bet, and track your real results for this demo. No real money is used.
+                            </p>
+                            
+                            <div class="flex space-x-4">
+                                <button onclick="navigateTo('crash')" class="px-8 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-lg shadow-mc-btn transition-colors rounded-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-play text-sm"></i> PLAY CRASH
+                                </button>
+                                <button onclick="navigateTo('mines')" class="px-8 py-3 bg-[#313131] hover:bg-[#454545] border border-[#555] text-white font-bold text-lg shadow-mc-btn transition-colors rounded-sm">
+                                    OPEN MINES <i class="fa-solid fa-arrow-right ml-2 text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Decorative Hero Image (Minecraft blocks CSS art representation) -->
+                        <div class="hidden lg:flex relative w-64 h-64 perspective-1000">
+                           <img src="https://minecraft.wiki/images/diamond_block" class="absolute w-32 h-32 pixelated top-0 left-1/2 -translate-x-1/2 drop-shadow-[0_20px_20px_rgba(0,0,0,0.5)] z-20 hover:-translate-y-4 transition-transform duration-500">
+                           <img src="https://minecraft.wiki/images/grass_block" class="absolute w-24 h-24 pixelated bottom-4 left-0 drop-shadow-xl z-10 opacity-80">
+                           <img src="https://minecraft.wiki/images/tnt" class="absolute w-20 h-20 pixelated bottom-10 right-4 drop-shadow-xl z-10 opacity-80">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Demo Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-mc-gold"></div>
+                        <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Most gained today</div>
+                        <div id="stat-most-gained" class="text-2xl font-black text-white mb-1">$0.00</div>
+                        <div class="text-xs text-mc-muted">Highest single profit recorded in this browser today.</div>
+                    </div>
+                    <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-mc-green"></div>
+                        <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Total won today</div>
+                        <div id="stat-total-won" class="text-2xl font-black text-white mb-1">$0.00</div>
+                        <div class="text-xs text-mc-muted">Real winnings from games played today on this demo.</div>
+                    </div>
+                    <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                        <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Games played today</div>
+                        <div id="stat-games-played" class="text-2xl font-black text-white mb-1">0</div>
+                        <div class="text-xs text-mc-muted"><span id="stat-online-count">0</span> players currently online in open BlockBet tabs.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="game-view" class="content-section hidden h-full flex flex-col p-6 max-w-7xl mx-auto">
+                
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 id="game-header-title" class="text-2xl font-black tracking-wider text-white drop-shadow-md">GAME</h2>
+                </div>
+
+                <div class="flex flex-col lg:flex-row gap-6 flex-1 min-h-[600px] h-full pb-10">
+                    
+                    <!-- LEFT PANEL: Universal Betting Controls -->
+                    <div id="side-bet-panel" class="w-full lg:w-80 bg-[#161616] border border-mc-border flex flex-col shrink-0 shadow-lg rounded-sm hidden">
+                        
+                        <div class="p-5 border-b border-[#313131] bg-[#1a1a1a]">
+                            <label class="text-xs font-bold text-[#888] uppercase tracking-wider mb-2 block">Bet Amount</label>
+                            
+                            <div class="relative flex items-center mb-3">
+                                <span class="absolute left-3 text-mc-muted font-bold"><img src="https://minecraft.wiki/images/gold_nugget" class="w-4 h-4 pixelated"></span>
+                                <!-- Changed type to text to handle custom input cleanly -->
+                                <input type="text" id="universal-bet-input" value="100" class="w-full mc-input py-2.5 pl-9 pr-3 font-bold text-lg rounded-sm" oninput="handleBetInput(this.value)">
+                            </div>
+                            
+                            <div class="grid grid-cols-4 gap-1.5">
+                                <button onclick="modifyBet('half')" class="py-1.5 bg-[#2b2b2b] hover:bg-[#313131] border border-[#454545] font-bold text-xs text-mc-muted hover:text-white transition-colors rounded-sm shadow-mc-btn">1/2</button>
+                                <button onclick="modifyBet('double')" class="py-1.5 bg-[#2b2b2b] hover:bg-[#313131] border border-[#454545] font-bold text-xs text-mc-muted hover:text-white transition-colors rounded-sm shadow-mc-btn">x2</button>
+                                <button onclick="modifyBet('max')" class="py-1.5 bg-[#2b2b2b] hover:bg-[#313131] border border-[#454545] font-bold text-xs text-mc-muted hover:text-white transition-colors rounded-sm shadow-mc-btn">MAX</button>
+                                <button onclick="modifyBet('clear')" class="py-1.5 bg-[#1e1e1e] hover:bg-[#313131] border border-[#454545] font-bold text-xs text-red-400 hover:text-red-300 transition-colors rounded-sm">CLR</button>
+                            </div>
+                        </div>
+
+                        <!-- Specific Game Controls Area -->
+                        <div class="flex-1 p-5 flex flex-col">
+                            
+                            <!-- MINES Controls -->
+                            <div id="controls-mines" class="game-controls flex-1 flex flex-col hidden">
+                                <div class="mb-4">
+                                    <label class="text-xs font-bold text-[#888] uppercase tracking-wider mb-2 block">Mines</label>
+                                    <div class="relative">
+                                        <select id="mines-count-select" class="w-full bg-[#1e1e1e] border-2 border-[#454545] text-white py-2.5 px-3 font-bold appearance-none cursor-pointer rounded-sm hover:border-[#666]">
+                                            <option value="1">1</option>
+                                            <option value="3" selected>3</option>
+                                            <option value="5">5</option>
+                                            <option value="10">10</option>
+                                            <option value="24">24</option>
+                                        </select>
+                                        <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-mc-muted pointer-events-none"></i>
+                                    </div>
+                                </div>
+                                <div class="mt-auto">
+                                    <button id="mines-action-btn" onclick="handleMinesAction()" class="w-full py-4 mc-button-green text-lg rounded-sm">
+                                        BET
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- CRASH Controls -->
+                            <div id="controls-crash" class="game-controls flex-1 flex flex-col hidden">
+                                <div class="mt-auto">
+                                    <button id="crash-action-btn" onclick="handleCrashAction()" class="w-full py-4 mc-button-green text-lg rounded-sm">
+                                        PLACE BET
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- COINFLIP Controls -->
+                            <div id="controls-coinflip" class="game-controls flex-1 flex flex-col hidden">
+                                <div class="mb-6">
+                                    <label class="text-xs font-bold text-[#888] uppercase tracking-wider mb-2 block">Choose Side</label>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button onclick="setCoinflipChoice('gold')" id="cf-btn-gold" class="py-6 bg-[#2b2b2b] border-2 border-mc-gold text-white font-bold flex flex-col items-center justify-center transition-colors shadow-inner rounded-sm">
+                                            <img src="https://minecraft.wiki/images/gold_ingot" class="w-10 h-10 pixelated mb-2 drop-shadow-md">
+                                        </button>
+                                        <button onclick="setCoinflipChoice('iron')" id="cf-btn-iron" class="py-6 bg-[#1e1e1e] border-2 border-[#454545] text-[#888] font-bold flex flex-col items-center justify-center transition-colors rounded-sm">
+                                            <img src="https://minecraft.wiki/images/iron_ingot" class="w-10 h-10 pixelated mb-2 opacity-50">
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="mt-auto">
+                                    <button id="coinflip-action-btn" onclick="handleCoinflipAction()" class="w-full py-4 mc-button-green text-lg rounded-sm">
+                                        FLIP COIN
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT PANEL: Game Canvases -->
+                    <div class="flex-1 bg-[#111] border border-[#313131] shadow-inner relative overflow-hidden flex flex-col items-center justify-center rounded-sm">
+                        
+                        <!-- MINES CANVAS -->
+                        <div id="canvas-mines" class="game-canvas z-10 w-full h-full p-8 hidden flex items-center justify-center bg-[#1a1a1a]">
+                            <div id="mines-grid-container" class="mines-grid w-full max-w-[500px]">
+                                <!-- JS Generated -->
+                            </div>
+                            <div id="mines-current-mult" class="absolute top-6 left-1/2 -translate-x-1/2 bg-[#161616] border-2 border-mc-green px-6 py-2 rounded-sm font-black text-2xl text-mc-green shadow-[0_0_15px_rgba(60,133,39,0.2)] hidden">
+                                1.00x
+                            </div>
+                        </div>
+
+                        <!-- CRASH CANVAS -->
+                        <div id="canvas-crash" class="game-canvas z-10 w-full h-full hidden relative bg-[#111]">
+                            
+                            <!-- Graph Background & Line -->
+                            <div id="crash-graph-container">
+                                <canvas id="crash-canvas" class="absolute inset-0 w-full h-full"></canvas>
+                                <!-- The Rocket -->
+                                <img id="crash-rocket" src="https://minecraft.wiki/images/firework_rocket" class="pixelated" style="display:none; transform-origin: center;">
+                            </div>
+
+                            <!-- Central Multiplier Text -->
+                            <div class="crash-text-container w-full">
+                                <div id="crash-mult-display" class="text-7xl font-black text-white font-mono drop-shadow-lg tracking-tighter">
+                                    1.00x
+                                </div>
+                                <div id="crash-status-display" class="text-sm font-bold text-mc-muted mt-2 uppercase tracking-widest hidden">
+                                    Crashed
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- COINFLIP CANVAS -->
+                        <div id="canvas-coinflip" class="game-canvas z-10 w-full h-full hidden flex flex-col items-center justify-center bg-[#1a1a1a]">
+                            <div class="relative w-48 h-48 mb-12" style="perspective: 1000px;">
+                                <div id="cf-coin" class="w-full h-full relative transition-transform duration-1000" style="transform-style: preserve-3d;">
+                                    <!-- Gold -->
+                                    <div class="absolute inset-0 bg-[#e6c200] border-4 border-[#b39700] rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(230,194,0,0.3)]" style="backface-visibility: hidden;">
+                                        <img src="https://minecraft.wiki/images/gold_ingot" class="w-24 h-24 pixelated drop-shadow-md">
+                                    </div>
+                                    <!-- Iron -->
+                                    <div class="absolute inset-0 bg-[#d8d8d8] border-4 border-[#a0a0a0] rounded-full flex items-center justify-center shadow-xl" style="backface-visibility: hidden; transform: rotateY(180deg);">
+                                        <img src="https://minecraft.wiki/images/iron_ingot" class="w-24 h-24 pixelated drop-shadow-md">
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="cf-result-msg" class="text-3xl font-black h-10 text-white drop-shadow-md"></div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Sign Up/Login Modal -->
+    <div id="auth-modal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center">
+        <div class="bg-[#161616] border-2 border-mc-border shadow-2xl w-[400px] rounded-sm overflow-hidden">
+            <div class="bg-[#111] p-4 border-b border-[#313131] flex justify-between items-center">
+                <span class="font-bold text-sm tracking-wider text-white">ACCESS ACCOUNT</span>
+                <button onclick="document.getElementById('auth-modal').classList.add('hidden')" class="text-mc-muted hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="p-6">
+                <div class="bg-[#1b4d2a] bg-opacity-20 border border-mc-green p-4 mb-6 text-sm font-semibold flex flex-col items-center text-center rounded-sm">
+                    <img src="https://minecraft.wiki/images/experience_bottle" class="w-8 h-8 pixelated mb-2 drop-shadow-md">
+                    <span class="text-white">Get a free <span class="text-mc-green font-bold">$5.00M</span> to test games.</span>
+                    <span class="text-xs text-mc-muted mt-1">No password needed for demo.</span>
+                </div>
+
+                <form onsubmit="handleLogin(event)">
+                    <div class="mb-6">
+                        <label class="block text-xs font-bold text-[#888] uppercase tracking-wider mb-2">Minecraft Username</label>
+                        <input type="text" id="mc-username" required class="w-full bg-[#1e1e1e] border-2 border-[#454545] focus:border-mc-green text-white p-3 font-bold text-lg rounded-sm" placeholder="e.g. Notch">
+                    </div>
+                    <button type="submit" class="w-full py-4 mc-button-green text-lg rounded-sm">
+                        PLAY NOW
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- MINES LOGIC ---
+        function renderMinesGrid() {
+            const container = document.getElementById('mines-grid-container');
+            container.innerHTML = '';
+            for (let i = 0; i < 25; i++) {
+                const tile = document.createElement('div');
+                tile.className = 'mine-tile';
+                tile.dataset.index = i;
+                tile.onclick = () => handleMinesClick(i);
+                container.appendChild(tile);
+            }
+        }
+
+        function handleMinesAction() {
+            if (!requireAuth()) return;
+            const btn = document.getElementById('mines-action-btn');
+
+            if (!state.mines.active) {
+                const bet = getBetAmount();
+                if (!bet) return;
+
+                state.balance -= bet;
+                updateBalanceDisplay();
+
+                state.mines.active = true;
+                state.mines.history = [];
+                state.mines.multiplier = 1.0;
+                state.mines.minesCount = parseInt(document.getElementById('mines-count-select').value);
+                
+                // Gen map
+                state.mines.grid = Array(25).fill().map(() => ({isMine: false, revealed: false}));
+                let placed = 0;
+                while (placed < state.mines.minesCount) {
+                    const idx = Math.floor(Math.random() * 25);
+                    if (!state.mines.grid[idx].isMine) {
+                        state.mines.grid[idx].isMine = true;
+                        placed++;
+                    }
+                }
+
+                // UI Reset
+                btn.textContent = 'CASHOUT';
+                btn.classList.remove('mc-button-green');
+                btn.classList.add('mc-button-gold'); 
+                document.getElementById('mines-count-select').disabled = true;
+                document.getElementById('mines-current-mult').classList.remove('hidden');
+                document.getElementById('mines-current-mult').textContent = '1.00x';
+                document.getElementById('universal-bet-input').disabled = true;
+
+                renderMinesGrid(); 
+            } else {
+                endMinesGame(true);
+            }
+        }
+
+        function handleMinesClick(index) {
+            if (!state.mines.active) return;
+            const tData = state.mines.grid[index];
+            if (tData.revealed) return;
+
+            const tEl = document.querySelector(`.mine-tile[data-index="${index}"]`);
+            tData.revealed = true;
+
+            if (tData.isMine) {
+                tEl.classList.add('revealed', 'bomb');
+                tEl.innerHTML = '<img src="https://minecraft.wiki/images/tnt" class="w-10 h-10 pixelated drop-shadow-md">';
+                endMinesGame(false);
+            } else {
+                tEl.classList.add('revealed', 'gem');
+                tEl.innerHTML = '<img src="https://minecraft.wiki/images/emerald" class="w-10 h-10 pixelated drop-shadow-md">';
+                
+                state.mines.history.push(index);
+                
+                // Multiplier math
+                const total = 25;
+                const mines = state.mines.minesCount;
+                const hits = state.mines.history.length;
+                
+                let chanceOfSafe = (total - mines - (hits - 1)) / (total - (hits - 1));
+                state.mines.multiplier *= (1 / chanceOfSafe) * 0.99; // 1% edge
+                
+                document.getElementById('mines-current-mult').textContent = state.mines.multiplier.toFixed(2) + 'x';
+                
+                const currentWin = parseFloat(state.betAmountStr) * state.mines.multiplier;
+                document.getElementById('mines-action-btn').textContent = `CASHOUT ${formatMoney(currentWin)}`;
+
+                if (hits === total - mines) endMinesGame(true);
+            }
+        }
+
+        function endMinesGame(win) {
+            state.mines.active = false;
+            const btn = document.getElementById('mines-action-btn');
+            
+            // Reveal rest
+            state.mines.grid.forEach((t, i) => {
+                const el = document.querySelector(`.mine-tile[data-index="${i}"]`);
+                if (!t.revealed) {
+                    el.classList.add('revealed');
+                    el.style.opacity = '0.3';
+                    if (t.isMine) {
+                        el.innerHTML = '<img src="https://minecraft.wiki/images/tnt" class="w-8 h-8 pixelated grayscale">';
+                    } else {
+                        el.innerHTML = '<img src="https://minecraft.wiki/images/emerald" class="w-8 h-8 pixelated grayscale opacity-50">';
+                    }
+                }
+            });
+
+            if (win && state.mines.history.length > 0) {
+                const winnings = parseFloat(state.betAmountStr) * state.mines.multiplier;
+                state.balance += winnings;
+                recordGameResult(winnings - parseFloat(state.betAmountStr));
+                showToast(`Cashed out ${formatMoney(winnings)}!`);
+            } else if (!win) {
+                recordGameResult(-parseFloat(state.betAmountStr));
+                document.getElementById('mines-current-mult').classList.remove('text-mc-green');
+                document.getElementById('mines-current-mult').classList.add('text-red-500', 'border-red-500');
+            }
+
+            updateBalanceDisplay();
+            
+            setTimeout(() => {
+                btn.textContent = 'BET';
+                btn.className = 'w-full py-4 mc-button-green text-lg rounded-sm';
+                document.getElementById('mines-count-select').disabled = false;
+                document.getElementById('universal-bet-input').disabled = false;
+                
+                const multEl = document.getElementById('mines-current-mult');
+                multEl.classList.add('hidden');
+                multEl.className = 'absolute top-6 left-1/2 -translate-x-1/2 bg-[#161616] border-2 border-mc-green px-6 py-2 rounded-sm font-black text-2xl text-mc-green shadow-[0_0_15px_rgba(60,133,39,0.2)] hidden';
+            }, 2000);
+        }
+
+        // --- COINFLIP LOGIC ---
+        function setCoinflipChoice(choice) {
+            if(state.coinflip.isFlipping) return;
+            state.coinflip.choice = choice;
+            
+            const gBtn = document.getElementById('cf-btn-gold');
+            const iBtn = document.getElementById('cf-btn-iron');
+
+            if (choice === 'gold') {
+                gBtn.className = 'py-6 bg-[#2b2b2b] border-2 border-mc-gold text-white font-bold flex flex-col items-center justify-center shadow-inner rounded-sm';
+                gBtn.querySelector('img').classList.remove('opacity-50');
+                
+                iBtn.className = 'py-6 bg-[#1e1e1e] border-2 border-[#454545] text-[#888] font-bold flex flex-col items-center justify-center transition-colors rounded-sm';
+                iBtn.querySelector('img').classList.add('opacity-50');
+            } else {
+                iBtn.className = 'py-6 bg-[#2b2b2b] border-2 border-[#d8d8d8] text-white font-bold flex flex-col items-center justify-center shadow-inner rounded-sm';
+                iBtn.querySelector('img').classList.remove('opacity-50');
+                
+                gBtn.className = 'py-6 bg-[#1e1e1e] border-2 border-[#454545] text-[#888] font-bold flex flex-col items-center justify-center transition-colors rounded-sm';
+                gBtn.querySelector('img').classList.add('opacity-50');
+            }
+        }
+
+        function handleCoinflipAction() {
+            if (!requireAuth() || state.coinflip.isFlipping) return;
+            const bet = getBetAmount();
+            if (!bet) return;
+
+            state.coinflip.isFlipping = true;
+            state.balance -= bet;
+            updateBalanceDisplay();
+
+            document.getElementById('cf-result-msg').textContent = '';
+            const coin = document.getElementById('cf-coin');
+            const btn = document.getElementById('coinflip-action-btn');
+            btn.disabled = true;
+            
+            coin.style.transition = 'none';
+            coin.style.transform = 'rotateY(0deg)';
+            void coin.offsetWidth; 
+
+            const result = Math.random() < 0.5 ? 'gold' : 'iron';
+            let spins = 5 * 360; 
+            if (result === 'iron') spins += 180; 
+
+            coin.style.transition = 'transform 2.5s cubic-bezier(0.15, 0.85, 0.3, 1.1)';
+            coin.style.transform = `rotateY(${spins}deg)`;
+
+            setTimeout(() => {
+                const won = state.coinflip.choice === result;
+                const msg = document.getElementById('cf-result-msg');
+                
+                if (won) {
+                    const winAmt = bet * 1.95; 
+                    state.balance += winAmt;
+                    recordGameResult(winAmt - bet);
+                    msg.textContent = `+ ${formatMoney(winAmt)}`;
+                    msg.className = 'text-3xl font-black h-10 text-mc-green drop-shadow-md';
+                } else {
+                    recordGameResult(-bet);
+                    msg.textContent = `- ${formatMoney(bet)}`;
+                    msg.className = 'text-3xl font-black h-10 text-red-500 drop-shadow-md';
+                }
+                
+                updateBalanceDisplay();
+                state.coinflip.isFlipping = false;
+                btn.disabled = false;
+            }, 2600);
+        }
+
+        // --- CRASH LOGIC ---
+        let crashCanvas, crashCtx;
+        
+        function setupCrashCanvas() {
+            crashCanvas = document.getElementById('crash-canvas');
+            if(crashCanvas) {
+                crashCtx = crashCanvas.getContext('2d');
+                resizeCrashCanvas();
+                window.addEventListener('resize', resizeCrashCanvas);
+                if(!state.crash.active) drawCrashIdle();
+            }
+        }
+
+        function resizeCrashCanvas() {
+            if(!crashCanvas) return;
+            const container = document.getElementById('crash-graph-container');
+            crashCanvas.width = container.clientWidth;
+            crashCanvas.height = container.clientHeight;
+            if(!state.crash.active) drawCrashIdle();
+        }
+
+        function drawCrashIdle() {
+            if(!crashCtx) return;
+            crashCtx.clearRect(0, 0, crashCanvas.width, crashCanvas.height);
+            // Draw grid lines
+            crashCtx.strokeStyle = '#333';
+            crashCtx.lineWidth = 1;
+            crashCtx.beginPath();
+            crashCtx.moveTo(0, crashCanvas.height - 20);
+            crashCtx.lineTo(crashCanvas.width, crashCanvas.height - 20);
+            crashCtx.stroke();
+            
+            document.getElementById('crash-rocket').style.display = 'none';
+        }
+
+        function generateCrashPoint() {
+            // Standard crypto crash formula. e = 100, max 100x for fun, 1% house edge
+            const e = 2 ** 32;
+            const h = crypto.getRandomValues(new Uint32Array(1))[0];
+            // 1% instant crash (0x basically, or 1.00x)
+            if (h % 100 === 0) return 1.00;
+            
+            let point = Math.floor(100 * e / (e - h)) / 100;
+            if (point > 100.00) point = 100.00 + (Math.random() * 50); // Rare high flights
+            return Math.max(1.00, point);
+        }
+
+        function handleCrashAction() {
+            if (!requireAuth()) return;
+            const btn = document.getElementById('crash-action-btn');
+
+            if (!state.crash.active) {
+                // START BET
+                const bet = getBetAmount();
+                if (!bet) return;
+
+                state.balance -= bet;
+                updateBalanceDisplay();
+
+                state.crash.hasBet = true;
+                state.crash.betAmount = bet;
+                state.crash.cashedOut = false;
+                
+                // Pre-calculate
+                state.crash.crashPoint = generateCrashPoint();
+                
+                startCrashRound();
+
+            } else if (state.crash.hasBet && !state.crash.cashedOut && !state.crash.crashed) {
+                // CASHOUT
+                state.crash.cashedOut = true;
+                const winAmt = state.crash.betAmount * state.crash.currentMult;
+                state.balance += winAmt;
+                recordGameResult(winAmt - state.crash.betAmount);
+                updateBalanceDisplay();
+                
+                btn.textContent = 'CASHED OUT';
+                btn.disabled = true;
+                showToast(`Cashed out at ${state.crash.currentMult.toFixed(2)}x for ${formatMoney(winAmt)}!`);
+            }
+        }
+
+        function startCrashRound() {
+            state.crash.active = true;
+            state.crash.crashed = false;
+            state.crash.currentMult = 1.00;
+            state.crash.startTime = performance.now();
+            
+            const btn = document.getElementById('crash-action-btn');
+            document.getElementById('universal-bet-input').disabled = true;
+            
+            // UI Reset
+            const multDisplay = document.getElementById('crash-mult-display');
+            const statusDisplay = document.getElementById('crash-status-display');
+            multDisplay.className = 'text-7xl font-black text-white font-mono drop-shadow-lg tracking-tighter';
+            statusDisplay.classList.add('hidden');
+            
+            document.getElementById('crash-rocket').style.display = 'block';
+
+            btn.classList.remove('mc-button-green');
+            btn.classList.add('mc-button-gold');
+            btn.textContent = 'CASHOUT';
+            btn.disabled = false;
+
+            if (state.crash.animationFrame) cancelAnimationFrame(state.crash.animationFrame);
+            state.crash.animationFrame = requestAnimationFrame(updateCrashLoop);
+        }
+
+        function updateCrashLoop(time) {
+            if (state.crash.crashed) return;
+
+            // Math: Multiplier grows exponentially over time. 
+            // mult = e^(time * rate)
+            const elapsedMs = time - state.crash.startTime;
+            const elapsedSec = elapsedMs / 1000;
+            
+            // Formula to make it feel right: starts slow, goes faster.
+            // 1.06^sec approx
+            state.crash.currentMult = Math.pow(1.06, elapsedSec);
+
+            if (state.crash.currentMult >= state.crash.crashPoint) {
+                state.crash.currentMult = state.crash.crashPoint;
+                endCrashRound();
+            } else {
+                renderCrashFrame(state.crash.currentMult);
+                
+                if (state.crash.hasBet && !state.crash.cashedOut) {
+                    const currentWin = state.crash.betAmount * state.crash.currentMult;
+                    document.getElementById('crash-action-btn').textContent = `CASHOUT ${formatMoney(currentWin)}`;
+                }
+
+                state.crash.animationFrame = requestAnimationFrame(updateCrashLoop);
+            }
+        }
+
+        function renderCrashFrame(mult) {
+            const multDisplay = document.getElementById('crash-mult-display');
+            multDisplay.textContent = mult.toFixed(2) + 'x';
+
+            if(!crashCtx) return;
+            const w = crashCanvas.width;
+            const h = crashCanvas.height;
+            
+            crashCtx.clearRect(0, 0, w, h);
+            
+            // Draw axes
+            crashCtx.strokeStyle = '#333';
+            crashCtx.lineWidth = 2;
+            crashCtx.beginPath();
+            crashCtx.moveTo(0, h);
+            crashCtx.lineTo(w, h);
+            crashCtx.stroke();
+
+            // Rocket travels straight upward from the bottom center.
+            const maxVisMult = Math.max(2, mult * 1.2);
+            const curX = w / 2;
+            const progress = Math.min(0.95, (mult - 1) / (maxVisMult - 1));
+            const curY = h - (h * progress);
+
+            crashCtx.strokeStyle = '#3c8527';
+            crashCtx.lineWidth = 4;
+            crashCtx.beginPath();
+            crashCtx.moveTo(curX, h);
+            crashCtx.lineTo(curX, curY);
+            crashCtx.stroke();
+
+            const rocket = document.getElementById('crash-rocket');
+            rocket.style.left = `${curX}px`;
+            rocket.style.top = `${curY}px`;
+            rocket.style.transform = 'translate(-50%, -50%) rotate(0deg)';
+        }
+
+        function endCrashRound() {
+            state.crash.crashed = true;
+            state.crash.active = false;
+            
+            const btn = document.getElementById('crash-action-btn');
+            const multDisplay = document.getElementById('crash-mult-display');
+            const statusDisplay = document.getElementById('crash-status-display');
+            const rocket = document.getElementById('crash-rocket');
+            
+            multDisplay.textContent = state.crash.crashPoint.toFixed(2) + 'x';
+            multDisplay.className = 'text-7xl font-black text-[#ff5555] font-mono drop-shadow-[0_0_15px_rgba(255,85,85,0.5)] tracking-tighter';
+            
+            statusDisplay.classList.remove('hidden');
+            
+            rocket.src = 'https://minecraft.wiki/images/campfire'; // Explosion mock
+            rocket.style.transform = 'translate(-50%, -50%) scale(1.5)';
+            
+            if (state.crash.hasBet && !state.crash.cashedOut) {
+                // Lost
+                recordGameResult(-state.crash.betAmount);
+                showToast(`Crashed! You lost ${formatMoney(state.crash.betAmount)}.`, 'error');
+            }
+            
+            btn.textContent = 'PLACE BET';
+            btn.disabled = true; // prevent immediate re-bet
+
+            setTimeout(() => {
+                btn.className = 'w-full py-4 mc-button-green text-lg rounded-sm';
+                btn.disabled = false;
+                document.getElementById('universal-bet-input').disabled = false;
+                rocket.src = 'https://minecraft.wiki/images/firework_rocket';
+                state.crash.hasBet = false;
+                drawCrashIdle();
+            }, 3000);
+        }
+
+        // --- INIT ---
+        window.onload = () => {
+            installImageFallbacks();
+            loadSaveData();
+            renderAnnouncement();
+            if(!state.user) updateBalanceDisplay();
+            setupCrashCanvas();
+            heartbeatOnline();
+            setInterval(heartbeatOnline, 5000);
+            updateLiveStatsDisplay();
+        };
+    </script>
+
+    <div id="cash-modal" class="hidden fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4"><div class="w-full max-w-md bg-[#161616] border border-mc-border p-6 shadow-2xl"><h2 id="cash-modal-title" class="text-xl font-black mb-4">DEPOSIT (DEMO)</h2><input id="cash-amount" type="number" min="1" placeholder="Amount" class="w-full bg-[#222] border border-[#555] p-3 text-white mb-4"><button onclick="submitCashRequest()" class="w-full py-3 mc-button-green">GENERATE REQUEST CODE</button><div id="cash-result" class="hidden mt-4 text-center"><p class="text-mc-muted text-sm">Make a ticket in your Discord server and send this code:</p><div id="cash-code" class="mt-2 p-3 bg-[#222] font-mono font-black text-mc-gold"></div></div><button onclick="document.getElementById('cash-modal').classList.add('hidden')" class="mt-4 text-sm text-mc-muted">CLOSE</button></div></div>
+    <div id="admin-modal" class="hidden fixed inset-0 z-[130] bg-black/70 flex items-center justify-center p-4"><div class="w-full max-w-lg bg-[#161616] border border-[#6b3fa0] p-6 shadow-2xl"><h2 class="text-xl font-black mb-4">BOOM154 ADMIN PANEL</h2><label class="text-sm font-bold">Announcement</label><textarea id="admin-announcement" class="w-full mt-1 bg-[#222] border border-[#555] p-3 text-white h-24" placeholder="Announcement text"></textarea><label class="block mt-4 text-sm font-bold">Show for how many minutes?</label><input id="admin-duration" type="number" min="1" value="60" class="w-full mt-1 bg-[#222] border border-[#555] p-3 text-white"><label class="flex items-center gap-3 mt-4"><input id="pause-deposits" type="checkbox"> Pause deposits</label><label class="flex items-center gap-3 mt-2"><input id="pause-withdrawals" type="checkbox"> Pause withdrawals</label><button onclick="saveAdminSettings()" class="w-full mt-5 py-3 bg-[#6b3fa0] font-bold">SAVE SETTINGS</button><button onclick="document.getElementById('admin-modal').classList.add('hidden')" class="mt-4 text-sm text-mc-muted">CLOSE</button></div></div>
+
+</body>
+</html>
