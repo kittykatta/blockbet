@@ -25,6 +25,7 @@
                     },
                     fontFamily: {
                         sans: ['Segoe UI', 'Noto Sans', 'Helvetica', 'Arial', 'sans-serif'],
+                        mono: ['Consolas', 'Monaco', 'Courier New', 'monospace'],
                     },
                     boxShadow: {
                         'mc-btn': 'inset 0 2px 0 rgba(255,255,255,0.2), inset 0 -3px 0 rgba(0,0,0,0.2)',
@@ -128,6 +129,7 @@
             font-weight: bold;
         }
 
+        /* --- GAME SPECIFIC STYLES --- */
         .mines-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -217,7 +219,99 @@
             color: #ff5555;
             text-shadow: 0 0 10px rgba(255, 85, 85, 0.5);
         }
-
+        
+        /* --- CRAFTDLE (WORDLE) STYLES --- */
+        .craftdle-grid {
+            display: grid;
+            grid-template-rows: repeat(6, 1fr);
+            gap: 5px;
+            margin: 0 auto;
+            max-width: 350px;
+        }
+        .craftdle-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+        }
+        .craftdle-cell {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 2px solid #454545;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            background-color: #1e1e1e;
+            color: white;
+            transition: all 0.3s;
+        }
+        .craftdle-cell.correct {
+            background-color: #3c8527;
+            border-color: #3c8527;
+        }
+        .craftdle-cell.present {
+            background-color: #b59f3b;
+            border-color: #b59f3b;
+        }
+        .craftdle-cell.absent {
+            background-color: #3a3a3c;
+            border-color: #3a3a3c;
+        }
+        .craftdle-keyboard {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+        .keyboard-row {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            width: 100%;
+        }
+        .key {
+            background-color: #454545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 12px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            user-select: none;
+            min-width: 30px;
+            text-align: center;
+            transition: background-color 0.2s;
+        }
+        .key:hover { background-color: #555; }
+        .key:active { background-color: #666; transform: translateY(2px); }
+        .key.large { padding: 10px 15px; font-size: 0.8rem; }
+        
+        .key.correct { background-color: #3c8527; }
+        .key.present { background-color: #b59f3b; }
+        .key.absent { background-color: #3a3a3c; opacity: 0.7; }
+        
+        /* Animation for revealing letters */
+        @keyframes flipIn {
+            0% { transform: rotateX(-90deg); opacity: 0; }
+            100% { transform: rotateX(0); opacity: 1; }
+        }
+        .flip-reveal {
+            animation: flipIn 0.5s ease forwards;
+        }
+        
+        /* Shake animation for invalid words */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake {
+            animation: shake 0.5s;
+        }
     </style>
 </head>
 <body class="flex h-screen antialiased text-mc-text font-sans selection:bg-mc-green selection:text-white">
@@ -232,7 +326,7 @@
             user: null, 
             balance: 0,
             currentGame: 'home',
-            betAmountStr: "100", 
+            betAmountStr: "10000", 
             
             mines: {
                 minesCount: 3, active: false, grid: [], multiplier: 1.0, history: []
@@ -244,8 +338,346 @@
             },
             coinflip: {
                 choice: 'gold', isFlipping: false
+            },
+            craftdle: {
+                wordLength: 5,
+                maxGuesses: 6,
+                currentGuess: "",
+                guesses: [],
+                gameStatus: "playing", // playing, won, lost, wait
+                lastPlayedDate: null,
+                solution: "" // Will be set daily
             }
         };
+
+        // --- CRAFTDLE (WORDLE) LOGIC ---
+        // Curated list of 5-letter Minecraft related words
+        const craftdleWords = [
+            "BLOCK", "MINER", "SWORD", "STEVE", "CREEP", 
+            "GHAST", "SPAWN", "CHEST", "APPLE", "WHEAT", 
+            "SHEEP", "SLIME", "BIOME", "WORLD", "CRAFT", 
+            "TOOLS", "TORCH", "ZOMBIE", "WATER", "STONE",
+            "GLASS", "IRON", "GOLD", "BRICK", "SAND", 
+            "WOOD", "FLINT", "ANVIL", "ARROW", "BOW",
+            "SQUID", "WITCH", "VILLAGE", "ENDER", "NETHER",
+            "BLAZE", "SKULL", "BONE", "FLESH", "MELON",
+            "BREAD", "PAPER", "BOOK", "MAP", "CLOCK",
+            "COMPASS", "STICK", "STRING", "WOOL", "LEAD",
+            "DIRT", "CLAY", "COAL", "DIAMOND", "EMERALD",
+            "LAPIS", "REDSTONE", "QUARTZ", "OBSIDIAN", "BEDROCK"
+        ];
+        
+        // Simple seeded random to get the same word for everyone on the same day
+        function getDailyWord() {
+            const today = new Date();
+            // Use Year + Month + Day as seed
+            const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+            // Simple hash function to pick an index
+            const index = (seed * 1103515245 + 12345) % craftdleWords.length;
+            // Ensure index is positive
+            const posIndex = Math.abs(index);
+            return craftdleWords[posIndex];
+        }
+
+        function initCraftdle() {
+            const today = new Date().toISOString().slice(0, 10);
+            
+            // Try to load saved state
+            try {
+                const savedStr = localStorage.getItem('blockbet_craftdle');
+                if (savedStr) {
+                    const savedState = JSON.parse(savedStr);
+                    if (savedState.lastPlayedDate === today) {
+                        // Load today's game
+                        state.craftdle = { ...state.craftdle, ...savedState };
+                    } else {
+                        // Reset for new day
+                        state.craftdle.guesses = [];
+                        state.craftdle.currentGuess = "";
+                        state.craftdle.gameStatus = "playing";
+                        state.craftdle.lastPlayedDate = today;
+                    }
+                } else {
+                    state.craftdle.lastPlayedDate = today;
+                }
+            } catch (e) {
+                console.error("Error loading Craftdle state", e);
+                state.craftdle.lastPlayedDate = today;
+            }
+            
+            state.craftdle.solution = getDailyWord();
+            renderCraftdleBoard();
+            renderCraftdleKeyboard();
+            updateCraftdleUI();
+        }
+        
+        function saveCraftdle() {
+            localStorage.setItem('blockbet_craftdle', JSON.stringify(state.craftdle));
+        }
+
+        // Handle keyboard input globally for Craftdle
+        document.addEventListener('keydown', (e) => {
+            if (state.currentGame !== 'home' || state.craftdle.gameStatus !== 'playing') return;
+            // Don't intercept if typing in an input field (like chat or admin panel)
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            const key = e.key.toUpperCase();
+            
+            if (key === 'ENTER') {
+                submitCraftdleGuess();
+            } else if (key === 'BACKSPACE') {
+                handleCraftdleKey('BACKSPACE');
+            } else if (/^[A-Z]$/.test(key)) {
+                handleCraftdleKey(key);
+            }
+        });
+
+        function handleCraftdleKey(key) {
+            if (state.craftdle.gameStatus !== "playing") return;
+
+            if (key === 'BACKSPACE' || key === 'DEL') {
+                state.craftdle.currentGuess = state.craftdle.currentGuess.slice(0, -1);
+            } else if (key === 'ENTER') {
+                submitCraftdleGuess();
+                return; // submit handles re-rendering
+            } else if (key.length === 1 && state.craftdle.currentGuess.length < state.craftdle.wordLength) {
+                state.craftdle.currentGuess += key;
+            }
+            
+            renderCraftdleBoard();
+        }
+
+        function submitCraftdleGuess() {
+            const guess = state.craftdle.currentGuess;
+            
+            if (guess.length !== state.craftdle.wordLength) {
+                // Not enough letters - shake the row
+                const row = document.getElementById(`craftdle-row-${state.craftdle.guesses.length}`);
+                if (row) {
+                    row.classList.remove('shake');
+                    void row.offsetWidth; // trigger reflow
+                    row.classList.add('shake');
+                }
+                showToast("Not enough letters", "error");
+                return;
+            }
+
+            // In a real Wordle, we'd check against a dictionary here.
+            // For simplicity, we'll accept any 5 letters.
+            
+            // Evaluate guess
+            const evaluation = evaluateCraftdleGuess(guess, state.craftdle.solution);
+            
+            // Update state
+            state.craftdle.guesses.push({ word: guess, evaluation });
+            state.craftdle.currentGuess = "";
+            
+            // Check win/loss
+            if (guess === state.craftdle.solution) {
+                state.craftdle.gameStatus = "won";
+                handleCraftdleWin();
+            } else if (state.craftdle.guesses.length >= state.craftdle.maxGuesses) {
+                state.craftdle.gameStatus = "lost";
+                showToast(`Game Over! The word was ${state.craftdle.solution}`, "error");
+            }
+
+            saveCraftdle();
+            
+            // Re-render
+            renderCraftdleBoard(true); // pass true to indicate a new guess was just submitted
+            updateCraftdleKeyboard();
+            updateCraftdleUI();
+        }
+
+        function evaluateCraftdleGuess(guess, solution) {
+            const evaluation = new Array(state.craftdle.wordLength).fill('absent');
+            const solutionChars = solution.split('');
+            const guessChars = guess.split('');
+
+            // First pass: Find exact matches (correct)
+            for (let i = 0; i < state.craftdle.wordLength; i++) {
+                if (guessChars[i] === solutionChars[i]) {
+                    evaluation[i] = 'correct';
+                    solutionChars[i] = null; // Mark as used
+                    guessChars[i] = null;
+                }
+            }
+
+            // Second pass: Find partial matches (present)
+            for (let i = 0; i < state.craftdle.wordLength; i++) {
+                if (guessChars[i] !== null) {
+                    const matchIndex = solutionChars.indexOf(guessChars[i]);
+                    if (matchIndex !== -1) {
+                        evaluation[i] = 'present';
+                        solutionChars[matchIndex] = null; // Mark as used
+                    }
+                }
+            }
+
+            return evaluation;
+        }
+
+        function handleCraftdleWin() {
+            // Award 1M Donut SMP money if logged in
+            if (state.user) {
+                const prize = 1000000;
+                state.balance += prize;
+                updateBalanceDisplay();
+                showToast(`You won! +${formatMoney(prize)} Donut SMP Money!`);
+                playSiteSound('win');
+            } else {
+                showToast(`You won! Login to claim your reward next time.`);
+            }
+        }
+
+        function renderCraftdleBoard(animateLastRow = false) {
+            const grid = document.getElementById('craftdle-grid');
+            if (!grid) return;
+            
+            grid.innerHTML = '';
+            
+            for (let r = 0; r < state.craftdle.maxGuesses; r++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'craftdle-row';
+                rowDiv.id = `craftdle-row-${r}`;
+                
+                const isCurrentRow = r === state.craftdle.guesses.length;
+                const isPastRow = r < state.craftdle.guesses.length;
+                
+                let wordToRender = "";
+                let evaluation = null;
+                
+                if (isPastRow) {
+                    wordToRender = state.craftdle.guesses[r].word;
+                    evaluation = state.craftdle.guesses[r].evaluation;
+                } else if (isCurrentRow) {
+                    wordToRender = state.craftdle.currentGuess;
+                }
+                
+                // Pad with spaces
+                wordToRender = wordToRender.padEnd(state.craftdle.wordLength, ' ');
+
+                for (let c = 0; c < state.craftdle.wordLength; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'craftdle-cell';
+                    
+                    const letter = wordToRender[c];
+                    if (letter !== ' ') {
+                        cell.textContent = letter;
+                        // Add slight pop animation when typing
+                        if (isCurrentRow) {
+                            cell.style.animation = 'flipIn 0.1s ease forwards';
+                        }
+                    }
+                    
+                    if (isPastRow && evaluation) {
+                        cell.classList.add(evaluation[c]);
+                        
+                        // Add flip animation for the just-submitted row
+                        if (animateLastRow && r === state.craftdle.guesses.length - 1) {
+                            cell.style.animationDelay = `${c * 0.1}s`;
+                            cell.classList.add('flip-reveal');
+                        }
+                    } else if (isCurrentRow && letter !== ' ') {
+                        // Style for currently typed letters
+                        cell.style.borderColor = '#888';
+                    }
+                    
+                    rowDiv.appendChild(cell);
+                }
+                grid.appendChild(rowDiv);
+            }
+        }
+
+        function renderCraftdleKeyboard() {
+            const kb = document.getElementById('craftdle-keyboard');
+            if (!kb) return;
+            
+            kb.innerHTML = '';
+            
+            const rows = [
+                ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+                ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+                ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'DEL']
+            ];
+            
+            rows.forEach(rowKeys => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'keyboard-row';
+                
+                rowKeys.forEach(key => {
+                    const btn = document.createElement('button');
+                    btn.textContent = key;
+                    btn.className = `key ${key.length > 1 ? 'large' : ''}`;
+                    btn.id = `key-${key}`;
+                    btn.onclick = () => handleCraftdleKey(key === 'DEL' ? 'BACKSPACE' : key);
+                    rowDiv.appendChild(btn);
+                });
+                
+                kb.appendChild(rowDiv);
+            });
+            
+            updateCraftdleKeyboard();
+        }
+
+        function updateCraftdleKeyboard() {
+            // Build a map of highest evaluation for each letter
+            const keyStates = {};
+            
+            state.craftdle.guesses.forEach(guessObj => {
+                const word = guessObj.word;
+                const evalArray = guessObj.evaluation;
+                
+                for (let i = 0; i < word.length; i++) {
+                    const letter = word[i];
+                    const status = evalArray[i];
+                    
+                    // Precedence: correct > present > absent
+                    if (status === 'correct') {
+                        keyStates[letter] = 'correct';
+                    } else if (status === 'present' && keyStates[letter] !== 'correct') {
+                        keyStates[letter] = 'present';
+                    } else if (status === 'absent' && !keyStates[letter]) {
+                        keyStates[letter] = 'absent';
+                    }
+                }
+            });
+            
+            // Apply classes to keys
+            for (const [letter, status] of Object.entries(keyStates)) {
+                const keyBtn = document.getElementById(`key-${letter}`);
+                if (keyBtn) {
+                    keyBtn.classList.remove('correct', 'present', 'absent');
+                    keyBtn.classList.add(status);
+                }
+            }
+        }
+        
+        function updateCraftdleUI() {
+            const overlay = document.getElementById('craftdle-overlay');
+            const msg = document.getElementById('craftdle-message');
+            
+            if (state.craftdle.gameStatus === 'playing') {
+                overlay.classList.add('hidden');
+            } else {
+                overlay.classList.remove('hidden');
+                
+                if (state.craftdle.gameStatus === 'won') {
+                    msg.innerHTML = `
+                        <div class="text-mc-green font-black text-2xl mb-2">YOU WON!</div>
+                        <div class="text-sm text-gray-300">Reward: 1M Donut SMP Money</div>
+                        <div class="text-xs text-gray-500 mt-4">Come back tomorrow for another word.</div>
+                    `;
+                } else if (state.craftdle.gameStatus === 'lost') {
+                    msg.innerHTML = `
+                        <div class="text-red-500 font-black text-2xl mb-2">GAME OVER</div>
+                        <div class="text-sm text-gray-300">The word was: <span class="text-white font-bold">${state.craftdle.solution}</span></div>
+                        <div class="text-xs text-gray-500 mt-4">Come back tomorrow for another word.</div>
+                    `;
+                }
+            }
+        }
+        // --- END CRAFTDLE LOGIC ---
 
         // LocalStorage handling
         function loadSaveData() {
@@ -278,8 +710,34 @@
         }
 
         // Utility
+        // Compact Donut SMP money helpers: 10000 -> 10k, 1000000 -> 1m
+        function parseMoneyInput(value) {
+            if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+            let text = String(value ?? '').trim().toLowerCase().replace(/[$,\s]/g, '');
+            if (!text) return NaN;
+            const match = text.match(/^([0-9]*\.?[0-9]+)([kmb])?$/);
+            if (!match) return NaN;
+            const base = Number(match[1]);
+            const mult = { k: 1e3, m: 1e6, b: 1e9 }[match[2]] || 1;
+            return Number.isFinite(base) ? base * mult : NaN;
+        }
+        function formatCompactMoney(amount) {
+            amount = Number(amount) || 0;
+            const abs = Math.abs(amount);
+            const units = [[1e9, 'b'], [1e6, 'm'], [1e3, 'k']];
+            for (const [value, suffix] of units) {
+                if (abs >= value) {
+                    const n = amount / value;
+                    return Number(n.toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2)).toString() + suffix;
+                }
+            }
+            return Number(amount.toFixed(2)).toString();
+        }
         function formatMoney(amount) {
-            return parseFloat(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' Donut SMP $';
+            return '$' + formatCompactMoney(amount);
+        }
+        function formatHomeMoney(amount) {
+            return formatCompactMoney(amount) + ' Donut SMP $';
         }
 
         const LIVE_STATS_KEY = 'blockbet_live_stats_v1';
@@ -302,8 +760,8 @@
             const gp = document.getElementById('stat-games-played');
             const oc = document.getElementById('online-player-count');
             const soc = document.getElementById('stat-online-count');
-            if (mg) mg.textContent = formatMoney(stats.mostGained);
-            if (tw) tw.textContent = formatMoney(stats.totalWon);
+            if (mg) mg.textContent = formatHomeMoney(stats.mostGained);
+            if (tw) tw.textContent = formatHomeMoney(stats.totalWon);
             if (gp) gp.textContent = stats.gamesPlayed.toLocaleString();
             if (oc) oc.textContent = online.toLocaleString();
             if (soc) soc.textContent = online.toLocaleString();
@@ -349,7 +807,24 @@
             saveGameData();
         }
 
+        // Lightweight generated UI sounds (no external audio files needed).
+        let siteAudioCtx = null;
+        function playSiteSound(kind='click') {
+            try {
+                siteAudioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+                const ctx=siteAudioCtx, osc=ctx.createOscillator(), gain=ctx.createGain();
+                const now=ctx.currentTime;
+                const presets={click:[520,0.035],win:[760,0.12],lose:[180,0.12],cash:[640,0.08]};
+                const [freq,dur]=presets[kind]||presets.click;
+                osc.frequency.setValueAtTime(freq,now); if(kind==='win') osc.frequency.exponentialRampToValueAtTime(freq*1.5,now+dur);
+                gain.gain.setValueAtTime(0.045,now); gain.gain.exponentialRampToValueAtTime(0.001,now+dur);
+                osc.connect(gain).connect(ctx.destination); osc.start(now); osc.stop(now+dur);
+            } catch(e) {}
+        }
+        document.addEventListener('click', e => { if (e.target.closest('button, .nav-item, .mine-tile, .key')) playSiteSound('click'); });
+
         function showToast(message, type = 'success') {
+            playSiteSound(type === 'success' ? 'win' : 'lose');
             const toast = document.createElement('div');
             toast.className = `fixed top-6 right-6 px-4 py-3 rounded-md shadow-lg z-50 text-white font-bold transition-all duration-300 transform translate-x-full border-2 ${type === 'success' ? 'bg-[#2b2b2b] border-[#454545]' : 'bg-[#5c1818] border-[#a82e2e]'}`;
             const icon = type === 'success' ? '<i class="fa-solid fa-check text-mc-green mr-2"></i>' : '<i class="fa-solid fa-xmark text-red-500 mr-2"></i>';
@@ -443,7 +918,7 @@
                 : `<p class="text-[#bdbdbd] leading-relaxed">Enter how much Donut SMP money you want to withdraw. The amount is removed from your balance and a withdrawal code is generated.</p>
                    <div class="mt-5">
                      <label class="block text-xs font-bold text-[#888] uppercase tracking-wider mb-2">Withdrawal amount</label>
-                     <input id="cash-amount" type="number" min="1" step="1" class="w-full mc-input p-3 font-bold" placeholder="Enter amount">
+                     <input id="cash-amount" type="text" class="w-full mc-input p-3 font-bold" placeholder="e.g. 100k or 1m">
                    </div>
                    <button onclick="submitWithdrawalRequest()" class="mt-4 w-full py-3 mc-button-green rounded-sm">
                      GENERATE WITHDRAWAL CODE
@@ -484,15 +959,22 @@
             } catch { return null; }
         }
         
-        function makeMoneyCode(amount, kind='credit') {
-            const payload={v:1,kind,amount:Number(amount),id:crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2),t:Date.now()};
+        function makeMoneyCode(amount, kind='credit', username='') {
+            const payload={
+                v:2,
+                kind,
+                amount:Number(amount),
+                username:String(username || '').trim().toLowerCase(),
+                id:crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2),
+                t:Date.now()
+            };
             const encoded=encodePayload(payload); return `${CODE_PREFIX}-${encoded}.${checksum(encoded)}`;
         }
         function submitWithdrawalRequest() {
             if (!requireAuth()) return;
 
             const amountInput = document.getElementById('cash-amount');
-            const amount = Number(amountInput?.value);
+            const amount = parseMoneyInput(amountInput?.value);
             if (!Number.isFinite(amount) || amount <= 0) {
                 return showToast('Enter a valid withdrawal amount.', 'error');
             }
@@ -504,7 +986,7 @@
             state.balance -= amount;
             updateBalanceDisplay();
 
-            const code = makeMoneyCode(amount, 'withdrawal');
+            const code = makeMoneyCode(amount, 'withdrawal', state.user.username);
             document.getElementById('cash-code').textContent = code;
             document.getElementById('cash-result').classList.remove('hidden');
 
@@ -513,11 +995,28 @@
 
         function renderCodesPanel() { const a=document.getElementById('codes-admin-area'); if(a) a.classList.toggle('hidden',!isAdmin()); }
         function getRedeemed(){try{return JSON.parse(localStorage.getItem('blockbet_redeemed_codes')||'[]')}catch{return[]}}
-        function redeemCode(){ if(!requireAuth())return; const input=document.getElementById('redeem-code-input'); const code=input.value.trim(); const data=decodePayload(code); if(!data) return showToast('Invalid or corrupted code.','error'); if(data.kind!=='credit') return showToast('That code is not a redeemable money code.','error'); const used=getRedeemed(); if(used.includes(data.id)) return showToast('That code was already redeemed in this browser.','error'); used.push(data.id); localStorage.setItem('blockbet_redeemed_codes',JSON.stringify(used)); state.balance+=Number(data.amount); updateBalanceDisplay(); input.value=''; showToast(`Redeemed ${formatMoney(data.amount)}!`); }
-        function generateAdminCode(){ if(!isAdmin())return; const amt=Number(document.getElementById('admin-code-amount').value); if(!Number.isFinite(amt)||amt<=0)return showToast('Enter a valid amount.','error'); const code=makeMoneyCode(amt,'credit'); const out=document.getElementById('admin-code-output'); out.textContent=code; out.classList.remove('hidden'); }
-        function decodeAdminCode(){ if(!isAdmin())return; const data=decodePayload(document.getElementById('admin-decode-input').value); const out=document.getElementById('admin-code-output'); out.textContent=data?`Decoded: ${data.kind} | ${formatMoney(data.amount)} | ID ${data.id}`:'Could not decode this code.'; out.classList.remove('hidden'); }
+        function redeemCode(){
+            if(!requireAuth())return;
+            const input=document.getElementById('redeem-code-input'); const code=input.value.trim(); const data=decodePayload(code);
+            if(!data) return showToast('Invalid or corrupted code.','error');
+            if(data.kind!=='credit') return showToast('That code is not a redeemable money code.','error');
+            const bound=String(data.username||'').toLowerCase();
+            if(!bound) return showToast('This old code is not bound to a username. Generate a new code instead.','error');
+            if(bound!==state.user.username.toLowerCase()) return showToast('This code is not valid for the account you are currently signed into.','error');
+            const used=getRedeemed(); if(used.includes(data.id)) return showToast('That code was already redeemed in this browser.','error');
+            used.push(data.id); localStorage.setItem('blockbet_redeemed_codes',JSON.stringify(used)); state.balance+=Number(data.amount); updateBalanceDisplay(); input.value=''; playSiteSound('win'); showToast(`Redeemed ${formatMoney(data.amount)}!`);
+        }
+        function generateAdminCode(){
+            if(!isAdmin())return;
+            const amt=parseMoneyInput(document.getElementById('admin-code-amount').value);
+            const username=document.getElementById('admin-code-username').value.trim();
+            if(!Number.isFinite(amt)||amt<=0)return showToast('Enter a valid amount.','error');
+            if(!username)return showToast('Enter the Minecraft username this code belongs to.','error');
+            const code=makeMoneyCode(amt,'credit',username);
+            const out=document.getElementById('admin-code-output'); out.textContent=code; out.classList.remove('hidden'); playSiteSound('click');
+        }
+        function decodeAdminCode(){ if(!isAdmin())return; const data=decodePayload(document.getElementById('admin-decode-input').value); const out=document.getElementById('admin-code-output'); out.textContent=data?`Decoded: ${data.kind} | ${formatMoney(data.amount)} | Username: ${data.username || 'UNBOUND'} | ID ${data.id}`:'Could not decode this code.'; out.classList.remove('hidden'); }
 
-        // Auth
         function applyLoginState(username, isNew = false) {
             document.getElementById('auth-modal').classList.add('hidden');
             document.getElementById('logged-out-topbar').classList.add('hidden');
@@ -630,27 +1129,31 @@
 
         // Betting Input
         function handleBetInput(val) {
-            let cleanVal = val.replace(/[^0-9.]/g, '');
-            const parts = cleanVal.split('.');
-            if (parts.length > 2) cleanVal = parts[0] + '.' + parts.slice(1).join('');
-            
-            state.betAmountStr = cleanVal;
-            document.getElementById('universal-bet-input').value = state.betAmountStr;
+            // Let players type normal numbers plus shorthand like 10k or 1.5m.
+            const clean = String(val).toLowerCase().replace(/[^0-9.kmb]/g, '');
+            state.betAmountStr = clean;
+        }
+        function normalizeBetInput() {
+            const amount = parseMoneyInput(state.betAmountStr);
+            if (Number.isFinite(amount) && amount >= 0) {
+                state.betAmountStr = String(amount);
+                document.getElementById('universal-bet-input').value = formatCompactMoney(amount);
+            }
         }
 
         function modifyBet(action) {
-            let current = parseFloat(state.betAmountStr) || 0;
+            let current = parseMoneyInput(state.betAmountStr) || 0;
             if (action === 'half') current /= 2;
             if (action === 'double') current *= 2;
             if (action === 'max') current = state.balance;
             if (action === 'clear') current = 0;
             
             state.betAmountStr = current % 1 === 0 ? current.toString() : current.toFixed(2);
-            document.getElementById('universal-bet-input').value = state.betAmountStr;
+            document.getElementById('universal-bet-input').value = formatCompactMoney(current);
         }
 
         function getBetAmount() {
-            const amt = parseFloat(state.betAmountStr);
+            const amt = parseMoneyInput(state.betAmountStr);
             if (isNaN(amt) || amt <= 0) {
                 showToast('Enter a valid bet amount', 'error');
                 return null;
@@ -713,14 +1216,13 @@
         <div class="border-t border-mc-border bg-[#111]">
             <div class="px-4 py-3 flex justify-between items-center text-xs text-[#666]">
                 <span>Status: <span class="text-mc-green font-bold">API Online</span></span>
-                <span>v2.0.2</span>
+                <span>v2.1.0</span>
             </div>
         </div>
     </aside>
 
     <div class="flex-1 flex flex-col min-w-0 bg-mc-dark relative">
         
-        <!-- Top Nav -->
         <header class="h-16 flex items-center justify-between px-6 bg-[#161616] border-b border-mc-border shrink-0">
             <div class="flex items-center">
                 <div class="flex items-center px-3 py-1.5 bg-[#1e1e1e] border border-mc-border rounded-sm shadow-inner">
@@ -733,7 +1235,7 @@
                 
                 <!-- Logged Out -->
                 <div id="logged-out-topbar" class="flex space-x-3">
-                    <button onclick="document.getElementById('auth-modal').classList.remove('hidden')" class="px-6 py-2 bg-[#313131] hover:bg-[#454545] border border-[#555] text-white font-bold text-sm shadow-mc-btn transition-colors">
+                    <button onclick="document.getElementById('auth-modal').classList.remove('hidden')" class="px-6 py-2 bg-[#313131] hover:bg-[#454545] border border-[#555] text-white font-bold text-sm shadow-mc-btn transition-colors rounded-sm">
                         LOGIN
                     </button>
                 </div>
@@ -746,8 +1248,8 @@
                             <span class="text-mc-muted mr-1">$</span>
                             <span class="user-balance text-mc-gold tracking-wide">0.00</span>
                         </div>
-                        <button onclick="openCashModal('deposit')" class="ml-1 px-4 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">DEPOSIT</button>
-                        <button onclick="openCashModal('withdraw')" class="ml-1 px-4 py-1 bg-[#8a5a18] hover:bg-[#a36c1f] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">WITHDRAW</button>
+                        <button onclick="openCashModal('deposit')" class="ml-1 px-4 py-1 bg-[#1a9391] hover:bg-[#1db0ae] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">DEPOSIT</button>
+                        <button onclick="openCashModal('withdraw')" class="ml-1 px-4 py-1 bg-[#222] border border-[#444] hover:bg-[#333] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">WITHDRAW</button>
                         <button onclick="manualSaveGame()" class="ml-1 px-3 py-1 bg-[#313131] hover:bg-[#454545] text-white font-bold text-xs rounded-sm">SAVE</button><button id="admin-button" onclick="openAdminPanel()" class="hidden ml-1 px-3 py-1 bg-[#6b3fa0] hover:bg-[#7b4bb0] text-white font-bold text-xs rounded-sm">ADMIN</button>
                     </div>
 
@@ -755,7 +1257,6 @@
                         <img id="profile-avatar" src="" class="w-8 h-8 pixelated border border-[#111] bg-[#444]" alt="Avatar">
                         <span id="display-username" class="text-sm font-bold pr-2 text-white"></span>
                         
-                        <!-- FIXED Dropdown: changed mt-2 to pt-2 inner wrap to bridge gap so hover won't drop -->
                         <div class="absolute top-full right-0 pt-2 w-48 hidden group-hover:block z-50">
                             <div class="bg-[#161616] border border-mc-border shadow-xl rounded-sm overflow-hidden">
                                 <div onclick="handleLogout()" class="px-4 py-3 text-sm text-[#ff5555] hover:bg-[#313131] font-bold border-b border-[#313131] cursor-pointer transition-colors">
@@ -772,66 +1273,115 @@
             
             <div id="home-view" class="content-section p-8 max-w-6xl mx-auto space-y-8">
                 
-                <div class="relative w-full min-h-[390px] bg-[#141414] border border-mc-border rounded-md overflow-hidden shadow-2xl flex flex-col justify-end">
-                    <!-- Techy dark background pattern -->
-                    <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#454545 1px, transparent 1px); background-size: 20px 20px;"></div>
-                    <div class="absolute inset-0 bg-gradient-to-r from-[#0d0d0d] via-[#151515]/90 to-transparent"></div><div class="absolute right-0 top-0 bottom-0 w-[48%] opacity-80 bg-[linear-gradient(135deg,#17341f,#1b1b1b_45%,#312218)]"></div>
+                <!-- Main Hero Banner matching the screenshot -->
+                <div class="relative w-full rounded-md overflow-hidden shadow-2xl flex flex-col justify-end" style="background-color: #121413; min-height: 420px;">
                     
-                    <div class="relative z-10 p-8 md:p-10 flex justify-between items-center w-full min-h-[390px]">
-                        <div class="max-w-2xl">
-                            <div class="flex items-center space-x-2 mb-4">
-                                <i class="fa-solid fa-gamepad text-mc-gold text-xs"></i>
-                                <span class="text-xs font-bold text-mc-gold uppercase tracking-wider">DONUT SMP CASINO</span>
-                            </div>
-                            <h1 class="text-5xl font-black text-white mb-4 tracking-tight drop-shadow-md">
-                                Play with <span class="text-cyan-400">Donut SMP money.</span>
-                            </h1>
-                            <p class="text-base text-[#b7b7b7] mb-5 font-semibold max-w-xl leading-relaxed">Play your favorite games with Donut SMP money.</p><a href="https://discord.gg/XRMPwZ3VRy" target="_blank" rel="noopener noreferrer" class="mb-8 inline-flex items-center gap-2 border border-[#315a3b] bg-[#122016] hover:bg-[#182b1c] px-4 py-3 text-sm text-[#d7ead9] rounded-sm transition-colors"><i class="fa-brands fa-discord text-lg"></i><span><b>JOIN THE DISCORD</b> to deposit or withdraw. Make a ticket to get started.</span></a>
-                            
-                            <div class="flex space-x-4">
-                                <button onclick="navigateTo('crash')" class="px-8 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-lg shadow-mc-btn transition-colors rounded-sm flex items-center gap-2">
-                                    <i class="fa-solid fa-play text-sm"></i> PLAY CRASH
-                                </button>
-                                <button onclick="navigateTo('mines')" class="px-8 py-3 bg-[#313131] hover:bg-[#454545] border border-[#555] text-white font-bold text-lg shadow-mc-btn transition-colors rounded-sm">
-                                    OPEN MINES <i class="fa-solid fa-arrow-right ml-2 text-sm"></i>
-                                </button>
-                            </div>
+                    <!-- Background image split (dark left, lighter right as per screenshot) -->
+                    <div class="absolute inset-0 flex">
+                        <div class="w-[45%] h-full bg-[#121413]"></div>
+                        <div class="w-[55%] h-full relative">
+                           <!-- Fallback gradient if image fails, but trying to match the screenshot vibe -->
+                           <div class="absolute inset-0 bg-gradient-to-r from-[#121413] to-[#1a2b22] opacity-90"></div>
+                           
+                           <!-- The actual background image (Minecraft landscape with a subtle blur/darken) -->
+                           <div class="absolute inset-0 overflow-hidden">
+                               <img src="https://minecraft.wiki/images/thumb/The_Nether.png/1200px-The_Nether.png" 
+                                    class="w-full h-full object-cover opacity-20 scale-105 filter blur-sm" 
+                                    style="mix-blend-mode: luminosity;" alt="Background">
+                               <!-- An overlay to match the exact dark tone -->
+                               <div class="absolute inset-0 bg-[#16201a] opacity-60"></div>
+                           </div>
+                           
+                           <!-- Fade edge to seamlessly blend with the left side -->
+                           <div class="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-[#121413] to-transparent"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="relative z-10 p-10 flex flex-col justify-center h-full max-w-4xl">
+                        <div class="flex items-center space-x-2 mb-6">
+                            <i class="fa-solid fa-gamepad text-[#ffc107] text-sm"></i>
+                            <span class="text-sm font-bold text-[#ffc107] uppercase tracking-wider">DONUT SMP CASINO</span>
                         </div>
                         
-                        <!-- Minecraft-style feature panel -->
-                        <div class="hidden lg:flex relative w-[420px] h-[250px] mr-2 overflow-hidden rounded-sm border border-[#3d3d3d] shadow-2xl items-end">
-                           <div class="absolute inset-0 bg-gradient-to-br from-[#2d5b45] via-[#274a36] to-[#1a1a1a]"></div>
-                           <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(45deg, rgba(255,255,255,.04) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.04) 75%); background-size: 26px 26px;"></div>
-                           <div class="relative z-10 p-6 w-full flex items-end justify-between">
-                               <div><div class="text-[10px] font-black tracking-[.25em] text-[#c6e9ce] mb-2">BLOCKBET x DONUT SMP</div><div class="text-2xl font-black text-white leading-tight">BET. WIN.<br>BUILD YOUR STACK.</div></div>
-                               <div class="flex gap-2">
-                                   <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_ingot.png" class="w-14 h-14 pixelated drop-shadow-xl">
-                                   <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/emerald.png" class="w-14 h-14 pixelated drop-shadow-xl">
-                               </div>
-                           </div>
+                        <h1 class="text-[3.5rem] leading-[1.1] font-black text-white mb-4 tracking-tight drop-shadow-md">
+                            Play with <span class="text-[#2dd4bf]">Donut SMP money.</span>
+                        </h1>
+                        
+                        <p class="text-xl text-[#d1d5db] mb-8 font-medium max-w-xl">
+                            Play your favorite games with Donut SMP money.
+                        </p>
+                        
+                        <a href="https://discord.gg/XRMPwZ3VRy" target="_blank" rel="noopener noreferrer" 
+                           class="mb-8 inline-flex items-center gap-3 border border-[#1f3a28] bg-[#101b13] hover:bg-[#15251a] px-5 py-4 text-sm text-[#d7ead9] rounded-[4px] transition-colors w-fit">
+                            <i class="fa-brands fa-discord text-xl text-white"></i>
+                            <span class="text-base"><strong class="text-white">JOIN THE DISCORD</strong> to deposit or withdraw. Make a ticket to get started.</span>
+                        </a>
+                        
+                        <div class="flex space-x-4">
+                            <button onclick="navigateTo('crash')" class="px-8 py-4 bg-[#14b8a6] hover:bg-[#0f9688] text-white font-black text-lg shadow-mc-btn transition-colors rounded-[4px] flex items-center justify-center gap-2 min-w-[200px]">
+                                <i class="fa-solid fa-play text-sm"></i> PLAY CRASH
+                            </button>
+                            <button onclick="navigateTo('mines')" class="px-8 py-4 bg-[#313131] hover:bg-[#454545] border-t border-l border-r border-[#444] border-b-2 border-b-[#222] text-white font-black text-lg transition-colors rounded-[4px] min-w-[200px]">
+                                OPEN MINES <i class="fa-solid fa-arrow-right ml-2 text-sm"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Live Stats -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-1 h-full bg-mc-gold"></div>
-                        <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Most gained today</div>
-                        <div id="stat-most-gained" class="text-2xl font-black text-white mb-1">$0.00</div>
-                        <div class="text-xs text-mc-muted">Highest single profit recorded in this browser today.</div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-1 bg-[#161616] border border-mc-border rounded-sm flex flex-col overflow-hidden">
+                        <div class="bg-[#222] p-4 border-b border-[#313131] flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/diamond_pickaxe.png" class="w-6 h-6 pixelated">
+                                <h3 class="font-black text-lg text-white">DAILY CRAFTDLE</h3>
+                            </div>
+                            <span class="bg-[#1b4d2a] text-[#7de599] text-xs font-bold px-2 py-1 rounded border border-[#2e8b49]">Win 1M</span>
+                        </div>
+                        <div class="p-5 flex-1 flex flex-col items-center justify-center relative">
+                            <!-- Overlay for won/lost state -->
+                            <div id="craftdle-overlay" class="absolute inset-0 bg-[#161616]/90 backdrop-blur-sm z-10 hidden flex flex-col items-center justify-center text-center p-6">
+                                <div id="craftdle-message"></div>
+                            </div>
+                            
+                            <div class="text-xs text-mc-muted mb-4 text-center">Guess the 5-letter Minecraft word. You have 6 tries.</div>
+                            
+                            <div id="craftdle-grid" class="craftdle-grid w-full mb-2">
+                                <!-- JS will populate the grid -->
+                            </div>
+                            
+                            <div id="craftdle-keyboard" class="craftdle-keyboard w-full max-w-[400px]">
+                                <!-- JS will populate the keyboard -->
+                            </div>
+                        </div>
                     </div>
-                    <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-1 h-full bg-mc-green"></div>
-                        <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Total won today</div>
-                        <div id="stat-total-won" class="text-2xl font-black text-white mb-1">$0.00</div>
-                        <div class="text-xs text-mc-muted">Winnings recorded from games played today.</div>
-                    </div>
-                    <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
-                        <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Games played today</div>
-                        <div id="stat-games-played" class="text-2xl font-black text-white mb-1">0</div>
-                        <div class="text-xs text-mc-muted"><span id="stat-online-count">0</span> players currently online in open BlockBet tabs.</div>
+
+                    <!-- Live Stats & Info -->
+                    <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 h-full">
+                        <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden flex flex-col justify-center">
+                            <div class="absolute top-0 left-0 w-1 h-full bg-mc-gold"></div>
+                            <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Most gained today</div>
+                            <div id="stat-most-gained" class="text-3xl font-black text-white mb-2">$0.00</div>
+                            <div class="text-sm text-mc-muted">Highest single profit recorded in this browser today.</div>
+                        </div>
+                        <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden flex flex-col justify-center">
+                            <div class="absolute top-0 left-0 w-1 h-full bg-mc-green"></div>
+                            <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Total won today</div>
+                            <div id="stat-total-won" class="text-3xl font-black text-white mb-2">$0.00</div>
+                            <div class="text-sm text-mc-muted">Winnings recorded from games played today.</div>
+                        </div>
+                        <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden flex flex-col justify-center sm:col-span-2">
+                            <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Games played today</div>
+                                    <div id="stat-games-played" class="text-3xl font-black text-white mb-1">0</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Players Online</div>
+                                    <div class="text-2xl font-black text-cyan-400 mb-1" id="stat-online-count">0</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -854,7 +1404,7 @@
                                 <span class="absolute left-3 text-mc-muted font-bold">
                                     <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_nugget.png" class="w-4 h-4 pixelated">
                                 </span>
-                                <input type="text" id="universal-bet-input" value="100" class="w-full mc-input py-2.5 pl-9 pr-3 font-bold text-lg rounded-sm" oninput="handleBetInput(this.value)">
+                                <input type="text" id="universal-bet-input" value="10k" class="w-full mc-input py-2.5 pl-9 pr-3 font-bold text-lg rounded-sm" oninput="handleBetInput(this.value)" onblur="normalizeBetInput()">
                             </div>
                             
                             <div class="grid grid-cols-4 gap-1.5">
@@ -965,7 +1515,7 @@
                                 <div class="flex gap-2"><input id="redeem-code-input" class="flex-1 mc-input p-3 font-mono" placeholder="Paste your BB code"><button onclick="redeemCode()" class="mc-button-green px-5">REDEEM</button></div>
                                 <div id="codes-admin-area" class="hidden mt-6 border-t border-[#313131] pt-5">
                                     <div class="font-black text-[#c084fc] mb-3">BOOM154 CODE TOOLS</div>
-                                    <div class="flex gap-2 mb-3"><input id="admin-code-amount" type="number" min="1" class="flex-1 mc-input p-3" placeholder="Amount"><button onclick="generateAdminCode()" class="bg-[#6b3fa0] px-5 font-bold">MAKE CODE</button></div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3"><input id="admin-code-amount" type="text" class="mc-input p-3" placeholder="Amount (100k / 1m)"><input id="admin-code-username" type="text" class="mc-input p-3" placeholder="Minecraft username"></div><button onclick="generateAdminCode()" class="w-full bg-[#6b3fa0] px-5 py-3 font-bold mb-3">MAKE USER-LOCKED CODE</button>
                                     <input id="admin-decode-input" class="w-full mc-input p-3 font-mono mb-2" placeholder="Paste code to decode"><button onclick="decodeAdminCode()" class="w-full py-3 bg-[#313131] font-bold">DECODE CODE</button>
                                     <div id="admin-code-output" class="mt-3 p-3 bg-[#111] font-mono text-sm text-mc-gold hidden"></div>
                                 </div>
@@ -995,7 +1545,7 @@
         </main>
     </div>
 
-    <div id="auth-modal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center">
+    <div id="auth-modal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center hidden">
         <div class="bg-[#161616] border-2 border-mc-border shadow-2xl w-[400px] rounded-sm overflow-hidden">
             <div class="bg-[#111] p-4 border-b border-[#313131] flex justify-between items-center">
                 <span class="font-bold text-sm tracking-wider text-white">ACCESS ACCOUNT</span>
@@ -1145,17 +1695,15 @@
             }
 
             updateBalanceDisplay();
-            
-            setTimeout(() => {
-                btn.textContent = 'BET';
-                btn.className = 'w-full py-4 mc-button-green text-lg rounded-sm';
-                document.getElementById('mines-count-select').disabled = false;
-                document.getElementById('universal-bet-input').disabled = false;
-                
-                const multEl = document.getElementById('mines-current-mult');
-                multEl.classList.add('hidden');
-                multEl.className = 'absolute top-6 left-1/2 -translate-x-1/2 bg-[#161616] border-2 border-mc-green px-6 py-2 rounded-sm font-black text-2xl text-mc-green shadow-[0_0_15px_rgba(60,133,39,0.2)] hidden';
-            }, 2000);
+
+            // Reset immediately so a mine loss never leaves the action button stuck on CASHOUT.
+            btn.textContent = 'BET';
+            btn.className = 'w-full py-4 mc-button-green text-lg rounded-sm';
+            document.getElementById('mines-count-select').disabled = false;
+            document.getElementById('universal-bet-input').disabled = false;
+            const multEl = document.getElementById('mines-current-mult');
+            multEl.classList.add('hidden');
+            multEl.className = 'absolute top-6 left-1/2 -translate-x-1/2 bg-[#161616] border-2 border-mc-green px-6 py-2 rounded-sm font-black text-2xl text-mc-green shadow-[0_0_15px_rgba(60,133,39,0.2)] hidden';
         }
 
         // --- COINFLIP LOGIC ---
@@ -1441,6 +1989,7 @@
             installImageFallbacks();
             loadSaveData();
             renderAnnouncement();
+            initCraftdle();
             if(!state.user) updateBalanceDisplay();
             setupCrashCanvas();
             heartbeatOnline();
