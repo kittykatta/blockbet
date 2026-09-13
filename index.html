@@ -339,6 +339,10 @@
             coinflip: {
                 choice: 'gold', isFlipping: false
             },
+            fishing: {
+                isFishing: false,
+                lastCatch: null
+            },
             craftdle: {
                 wordLength: 5,
                 maxGuesses: 6,
@@ -417,7 +421,7 @@
 
         // Handle keyboard input globally for Craftdle
         document.addEventListener('keydown', (e) => {
-            if (state.currentGame !== 'home' || state.craftdle.gameStatus !== 'playing') return;
+            if (state.currentGame !== 'craftdle' || state.craftdle.gameStatus !== 'playing') return;
             // Don't intercept if typing in an input field (like chat or admin panel)
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -701,12 +705,6 @@
                     balance: state.balance
                 }));
             }
-        }
-
-        function manualSaveGame() {
-            if (!requireAuth()) return;
-            saveGameData();
-            showToast('Account saved on this device.');
         }
 
         // Utility
@@ -1089,6 +1087,10 @@
                 showToast("Finish your Mines game first!", "error");
                 return;
             }
+            if (state.currentGame === 'fishing' && state.fishing.isFishing && view !== 'fishing') {
+                showToast("Finish reeling in your catch first!", "error");
+                return;
+            }
             if (state.currentGame === 'crash' && state.crash.hasBet && !state.crash.cashedOut && state.crash.active) {
                 showToast("Wait for Crash round to end!", "error");
                 return;
@@ -1115,16 +1117,33 @@
                     controlsEl.classList.remove('hidden');
                 }
                 
-                const titles = { 'mines': 'MINES', 'crash': 'CRASH', 'coinflip': 'COINFLIP', 'codes': 'CODES' };
+                const titles = { 'mines': 'MINES', 'fishing': 'FISHING', 'crash': 'CRASH', 'coinflip': 'COINFLIP', 'codes': 'CODES', 'craftdle': 'CRAFTDLE' };
                 document.getElementById('game-header-title').textContent = titles[view] || view;
 
                 if(view === 'mines' && !state.mines.active) renderMinesGrid();
                 if(view === 'crash') setupCrashCanvas();
+                if(view === 'fishing') renderFishingIdle();
+                if(view === 'craftdle') { document.getElementById('side-bet-panel').classList.add('hidden'); initCraftdle(); }
                 if(view === 'codes') { 
                     document.getElementById('side-bet-panel').classList.add('hidden'); 
                     renderCodesPanel(); 
                 }
             }
+        }
+
+        // Craftdle shortcut from the Games list
+        function navigateToCraftdle() {
+            navigateTo('home');
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const craftNav = document.getElementById('nav-craftdle');
+            if (craftNav) craftNav.classList.add('active');
+            setTimeout(() => {
+                const craftdle = document.getElementById('craftdle-grid');
+                if (craftdle) {
+                    craftdle.closest('.bg-[#161616]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    initCraftdle();
+                }
+            }, 0);
         }
 
         // Betting Input
@@ -1186,6 +1205,10 @@
                     <i class="fa-solid fa-house w-6 text-center"></i>
                     <span class="font-bold text-sm tracking-wide ml-2">HOME</span>
                 </div>
+                <div id="nav-codes" onclick="navigateTo('codes')" class="nav-item">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/enchanted_book.png" class="w-5 h-5 mr-3 pixelated">
+                    <span class="font-bold text-sm tracking-wide">CODES</span>
+                </div>
             </div>
 
             <div>
@@ -1194,6 +1217,16 @@
                 <div id="nav-mines" onclick="navigateTo('mines')" class="nav-item">
                     <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/tnt_side.png" class="w-5 h-5 mr-3 pixelated">
                     <span class="font-bold text-sm tracking-wide">MINES</span>
+                </div>
+
+                <div id="nav-fishing" onclick="navigateTo('fishing')" class="nav-item">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/fishing_rod.png" class="w-5 h-5 mr-3 pixelated">
+                    <span class="font-bold text-sm tracking-wide">FISHING</span>
+                </div>
+
+                <div id="nav-craftdle" onclick="navigateTo('craftdle')" class="nav-item">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/diamond_pickaxe.png" class="w-5 h-5 mr-3 pixelated">
+                    <span class="font-bold text-sm tracking-wide">CRAFTDLE</span>
                 </div>
 
                 <div id="nav-crash" onclick="navigateTo('crash')" class="nav-item">
@@ -1205,12 +1238,6 @@
                     <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_ingot.png" class="w-5 h-5 mr-3 pixelated">
                     <span class="font-bold text-sm tracking-wide">COINFLIP</span>
                 </div>
-
-                <div id="nav-codes" onclick="navigateTo('codes')" class="nav-item">
-                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/enchanted_book.png" class="w-5 h-5 mr-3 pixelated">
-                    <span class="font-bold text-sm tracking-wide">CODES</span>
-                </div>
-            </div>
         </div>
 
         <div class="border-t border-mc-border bg-[#111]">
@@ -1250,7 +1277,7 @@
                         </div>
                         <button onclick="openCashModal('deposit')" class="ml-1 px-4 py-1 bg-[#1a9391] hover:bg-[#1db0ae] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">DEPOSIT</button>
                         <button onclick="openCashModal('withdraw')" class="ml-1 px-4 py-1 bg-[#222] border border-[#444] hover:bg-[#333] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">WITHDRAW</button>
-                        <button onclick="manualSaveGame()" class="ml-1 px-3 py-1 bg-[#313131] hover:bg-[#454545] text-white font-bold text-xs rounded-sm">SAVE</button><button id="admin-button" onclick="openAdminPanel()" class="hidden ml-1 px-3 py-1 bg-[#6b3fa0] hover:bg-[#7b4bb0] text-white font-bold text-xs rounded-sm">ADMIN</button>
+                        <button id="admin-button" onclick="openAdminPanel()" class="hidden ml-1 px-3 py-1 bg-[#6b3fa0] hover:bg-[#7b4bb0] text-white font-bold text-xs rounded-sm">ADMIN</button>
                     </div>
 
                     <div class="flex items-center space-x-3 bg-[#1e1e1e] p-1.5 rounded-sm border border-mc-border shadow-inner relative group cursor-pointer">
@@ -1329,32 +1356,6 @@
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-1 bg-[#161616] border border-mc-border rounded-sm flex flex-col overflow-hidden">
-                        <div class="bg-[#222] p-4 border-b border-[#313131] flex justify-between items-center">
-                            <div class="flex items-center gap-2">
-                                <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/diamond_pickaxe.png" class="w-6 h-6 pixelated">
-                                <h3 class="font-black text-lg text-white">DAILY CRAFTDLE</h3>
-                            </div>
-                            <span class="bg-[#1b4d2a] text-[#7de599] text-xs font-bold px-2 py-1 rounded border border-[#2e8b49]">Win 1M</span>
-                        </div>
-                        <div class="p-5 flex-1 flex flex-col items-center justify-center relative">
-                            <!-- Overlay for won/lost state -->
-                            <div id="craftdle-overlay" class="absolute inset-0 bg-[#161616]/90 backdrop-blur-sm z-10 hidden flex flex-col items-center justify-center text-center p-6">
-                                <div id="craftdle-message"></div>
-                            </div>
-                            
-                            <div class="text-xs text-mc-muted mb-4 text-center">Guess the 5-letter Minecraft word. You have 6 tries.</div>
-                            
-                            <div id="craftdle-grid" class="craftdle-grid w-full mb-2">
-                                <!-- JS will populate the grid -->
-                            </div>
-                            
-                            <div id="craftdle-keyboard" class="craftdle-keyboard w-full max-w-[400px]">
-                                <!-- JS will populate the keyboard -->
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Live Stats & Info -->
                     <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 h-full">
                         <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden flex flex-col justify-center">
@@ -1440,6 +1441,20 @@
                                 </div>
                             </div>
 
+                            <!-- FISHING Controls -->
+                            <div id="controls-fishing" class="game-controls flex-1 flex flex-col hidden">
+                                <div id="fishing-odds" class="space-y-2 text-xs text-[#888]">
+                                    <div class="flex justify-between"><span>Low-value catches</span><span>0.15x–0.90x</span></div>
+                                    <div class="flex justify-between"><span>Good catches</span><span>1.25x–4x</span></div>
+                                    <div class="flex justify-between text-mc-gold"><span>Squid jackpot</span><span>8x</span></div>
+                                </div>
+                                <div class="mt-auto">
+                                    <button id="fishing-action-btn" onclick="handleFishingAction()" class="w-full py-4 mc-button-green text-lg rounded-sm">
+                                        CAST ROD
+                                    </button>
+                                </div>
+                            </div>
+
                             <!-- CRASH Controls -->
                             <div id="controls-crash" class="game-controls flex-1 flex flex-col hidden">
                                 <div class="mt-auto">
@@ -1504,6 +1519,49 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- FISHING CANVAS -->
+                        <div id="canvas-fishing" class="game-canvas z-10 w-full h-full hidden flex flex-col items-center justify-center bg-gradient-to-b from-[#162633] to-[#0d1720] p-8 relative overflow-hidden">
+                            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-[#123d57] opacity-70"></div>
+                            <div class="absolute inset-x-0 bottom-[42%] h-1 bg-[#72b8d8] opacity-50"></div>
+                            <div class="relative z-10 flex flex-col items-center text-center">
+                                <div id="fishing-status" class="text-xs font-bold uppercase tracking-[0.25em] text-[#8bc8e8] mb-5">Ready to cast</div>
+                                <div id="fishing-catch-card" class="w-72 min-h-80 bg-[#161616]/90 border-2 border-[#315a3b] shadow-2xl p-7 flex flex-col items-center justify-center">
+                                    <img id="fishing-rod" src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/fishing_rod.png" class="w-24 h-24 pixelated mb-5 transition-transform duration-500">
+                                    <img id="fishing-catch-img" src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/cod.png" class="hidden w-24 h-24 pixelated mb-4">
+                                    <div id="fishing-catch-name" class="text-2xl font-black text-white">CAST YOUR LINE</div>
+                                    <div id="fishing-catch-value" class="mt-2 text-lg font-bold text-mc-muted">Anything could bite...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                    <div id="canvas-craftdle" class="game-canvas z-10 w-full h-full hidden flex flex-col bg-[#161616] border border-mc-border rounded-sm overflow-hidden max-w-2xl mx-auto">
+                        <div class="bg-[#222] p-4 border-b border-[#313131] flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/diamond_pickaxe.png" class="w-6 h-6 pixelated">
+                                <h3 class="font-black text-lg text-white">DAILY CRAFTDLE</h3>
+                            </div>
+                            <span class="bg-[#1b4d2a] text-[#7de599] text-xs font-bold px-2 py-1 rounded border border-[#2e8b49]">Win 1M</span>
+                        </div>
+                        <div class="p-5 flex-1 flex flex-col items-center justify-center relative">
+                            <!-- Overlay for won/lost state -->
+                            <div id="craftdle-overlay" class="absolute inset-0 bg-[#161616]/90 backdrop-blur-sm z-10 hidden flex flex-col items-center justify-center text-center p-6">
+                                <div id="craftdle-message"></div>
+                            </div>
+                            
+                            <div class="text-xs text-mc-muted mb-4 text-center">Guess the 5-letter Minecraft word. You have 6 tries.</div>
+                            
+                            <div id="craftdle-grid" class="craftdle-grid w-full mb-2">
+                                <!-- JS will populate the grid -->
+                            </div>
+                            
+                            <div id="craftdle-keyboard" class="craftdle-keyboard w-full max-w-[400px]">
+                                <!-- JS will populate the keyboard -->
+                            </div>
+                        </div>
+                    </div>
+
+
 
                         <!-- CODES CANVAS -->
                         <div id="canvas-codes" class="game-canvas z-10 w-full h-full hidden flex flex-col items-center justify-center bg-[#1a1a1a] p-8">
@@ -1704,6 +1762,104 @@
             const multEl = document.getElementById('mines-current-mult');
             multEl.classList.add('hidden');
             multEl.className = 'absolute top-6 left-1/2 -translate-x-1/2 bg-[#161616] border-2 border-mc-green px-6 py-2 rounded-sm font-black text-2xl text-mc-green shadow-[0_0_15px_rgba(60,133,39,0.2)] hidden';
+        }
+
+        // --- FISHING LOGIC ---
+        const fishingLoot = [
+            { name: 'JUNK BOOT', item: 'leather_boots', multiplier: 0.15, weight: 12, flavor: 'Yeah... that was rough.' },
+            { name: 'STICK', item: 'stick', multiplier: 0.35, weight: 14, flavor: 'At least it is something.' },
+            { name: 'PUFFERFISH', item: 'pufferfish', multiplier: 0.65, weight: 14, flavor: 'Spiky little L.' },
+            { name: 'COD', item: 'cod', multiplier: 0.9, weight: 18, flavor: 'Almost broke even.' },
+            { name: 'SALMON', item: 'salmon', multiplier: 1.25, weight: 16, flavor: 'A decent catch!' },
+            { name: 'TROPICAL FISH', item: 'tropical_fish', multiplier: 2.0, weight: 10, flavor: 'Rare waters 👀' },
+            { name: 'NAUTILUS SHELL', item: 'nautilus_shell', multiplier: 4.0, weight: 5, flavor: 'That is a big pull!' },
+            { name: 'SQUID JACKPOT', item: 'ink_sac', multiplier: 8.0, weight: 1, flavor: 'THE SQUID WENT CRAZY 🦑' }
+        ];
+
+        function pickFishingLoot() {
+            const total = fishingLoot.reduce((sum, item) => sum + item.weight, 0);
+            let roll = Math.random() * total;
+            for (const item of fishingLoot) {
+                roll -= item.weight;
+                if (roll <= 0) return item;
+            }
+            return fishingLoot[0];
+        }
+
+        function renderFishingIdle() {
+            const status = document.getElementById('fishing-status');
+            const rod = document.getElementById('fishing-rod');
+            const img = document.getElementById('fishing-catch-img');
+            const name = document.getElementById('fishing-catch-name');
+            const value = document.getElementById('fishing-catch-value');
+            if (!status) return;
+            if (!state.fishing.isFishing) {
+                status.textContent = 'Ready to cast';
+                rod.classList.remove('hidden'); rod.style.transform = '';
+                img.classList.add('hidden');
+                name.textContent = 'CAST YOUR LINE';
+                value.textContent = 'Anything could bite...';
+                value.className = 'mt-2 text-lg font-bold text-mc-muted';
+            }
+        }
+
+        function handleFishingAction() {
+            if (!requireAuth() || state.fishing.isFishing) return;
+            const bet = getBetAmount();
+            if (!bet) return;
+
+            state.fishing.isFishing = true;
+            state.balance -= bet;
+            updateBalanceDisplay();
+
+            const btn = document.getElementById('fishing-action-btn');
+            const status = document.getElementById('fishing-status');
+            const rod = document.getElementById('fishing-rod');
+            const img = document.getElementById('fishing-catch-img');
+            const name = document.getElementById('fishing-catch-name');
+            const value = document.getElementById('fishing-catch-value');
+            btn.disabled = true;
+            btn.textContent = 'FISHING...';
+            document.getElementById('universal-bet-input').disabled = true;
+            status.textContent = 'Waiting for a bite...';
+            name.textContent = '...'; value.textContent = 'The bobber is floating';
+            rod.classList.remove('hidden'); img.classList.add('hidden');
+            rod.style.transform = 'translateY(24px) rotate(12deg)';
+
+            setTimeout(() => {
+                status.textContent = 'BITE! REELING IN...';
+                rod.style.transform = 'translateY(-12px) rotate(-18deg)';
+                playSiteSound('click');
+            }, 900);
+
+            setTimeout(() => {
+                const loot = pickFishingLoot();
+                const payout = Math.round(bet * loot.multiplier);
+                const profit = payout - bet;
+                state.balance += payout;
+                state.fishing.lastCatch = loot;
+                recordGameResult(profit);
+                updateBalanceDisplay();
+
+                rod.classList.add('hidden');
+                img.src = `${ASSETS_URL}/item/${loot.item}.png`;
+                img.classList.remove('hidden');
+                img.style.transform = 'scale(0.7)';
+                requestAnimationFrame(() => img.style.transform = 'scale(1.15)');
+                setTimeout(() => img.style.transform = 'scale(1)', 180);
+                status.textContent = loot.name === 'SQUID JACKPOT' ? 'LEGENDARY CATCH!' : 'CATCH REVEALED';
+                name.textContent = loot.name;
+                const resultText = profit >= 0 ? `+${formatMoney(profit)} profit` : `-${formatMoney(Math.abs(profit))} loss`;
+                value.textContent = `${loot.multiplier.toFixed(2)}x of your bet = ${formatMoney(payout)} • ${resultText}`;
+                value.className = `mt-2 text-lg font-bold ${profit >= 0 ? 'text-mc-green' : 'text-red-400'}`;
+                showToast(profit >= 0 ? `Caught ${loot.name}! ${loot.multiplier.toFixed(2)}x — ${formatMoney(profit)} profit.` : `Caught ${loot.name}. ${loot.multiplier.toFixed(2)}x — ${formatMoney(Math.abs(profit))} lost.`, profit >= 0 ? 'success' : 'error');
+                playSiteSound(profit >= 0 ? 'win' : 'lose');
+
+                state.fishing.isFishing = false;
+                btn.disabled = false;
+                btn.textContent = 'CAST ROD';
+                document.getElementById('universal-bet-input').disabled = false;
+            }, 1900);
         }
 
         // --- COINFLIP LOGIC ---
