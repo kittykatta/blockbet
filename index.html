@@ -139,6 +139,10 @@
         }
 
         .mine-tile {
+            min-width: 0;
+            min-height: 0;
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
             background-color: #313131;
             border: 2px solid #454545;
             border-radius: 4px;
@@ -146,12 +150,12 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: transform 0.1s, background-color 0.1s;
+            transition: background-color 0.1s;
+            transform: none !important;
             box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
         }
         .mine-tile:hover:not(.revealed) {
             background-color: #454545;
-            transform: scale(0.98);
         }
         .mine-tile.revealed {
             box-shadow: inset 0 2px 0 rgba(0,0,0,0.2);
@@ -173,7 +177,6 @@
 
         .hidden { display: none !important; }
 
-        /* Crash Game Graph */
         #crash-graph-container {
             position: relative;
             width: 100%;
@@ -221,6 +224,9 @@
     <div id="announcement-bar" class="hidden fixed top-0 left-0 right-0 z-[100] bg-[#3c8527] text-white text-center font-bold px-4 py-2 shadow-lg"><span id="announcement-text"></span></div>
 
     <script>
+        // Use a stable alternative to the minecraft wiki assets to avoid hotlink blocks
+        const ASSETS_URL = "https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures";
+
         // State Management
         const state = {
             user: null, 
@@ -265,9 +271,15 @@
             }
         }
 
+        function manualSaveGame() {
+            if (!requireAuth()) return;
+            saveGameData();
+            showToast('Account saved on this device.');
+        }
+
         // Utility
         function formatMoney(amount) {
-            return '$' + parseFloat(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            return parseFloat(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' Donut SMP $';
         }
 
         const LIVE_STATS_KEY = 'blockbet_live_stats_v1';
@@ -351,8 +363,7 @@
             }, 3000);
         }
 
-
-        // Image fallbacks: external Minecraft image hosts can occasionally block hotlinking.
+        // Image fallbacks for 100% load reliability
         const FALLBACK_PIXEL_ICON = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="#2b2b2b"/><rect x="8" y="8" width="48" height="48" fill="#555"/><rect x="16" y="16" width="32" height="32" fill="#888"/><rect x="24" y="24" width="16" height="16" fill="#ccc"/></svg>`)}`;
         function installImageFallbacks() {
             document.querySelectorAll('img').forEach(img => {
@@ -363,7 +374,6 @@
                 });
             });
         }
-
 
         const ADMIN_USERNAME = 'boom154';
         const ANNOUNCEMENT_KEY = 'blockbet_announcement_v1';
@@ -377,6 +387,7 @@
                 return a;
             } catch { return null; }
         }
+        
         function renderAnnouncement() {
             const a = getAnnouncement();
             const bar = document.getElementById('announcement-bar');
@@ -404,26 +415,107 @@
             saveCashStatus({ depositsPaused: document.getElementById('pause-deposits').checked, withdrawalsPaused: document.getElementById('pause-withdrawals').checked });
             renderAnnouncement(); document.getElementById('admin-modal').classList.add('hidden'); showToast('Admin settings saved.');
         }
+        const DISCORD_INVITE_URL = 'https://discord.gg/XRMPwZ3VRy';
+
         function openCashModal(type) {
             if (!requireAuth()) return;
+
             const c = getCashStatus();
-            if ((type==='deposit' && c.depositsPaused) || (type==='withdraw' && c.withdrawalsPaused)) return showToast(`${type === 'deposit' ? 'Deposits' : 'Withdrawals'} are currently paused.`, 'error');
-            document.getElementById('cash-modal-title').textContent = type === 'deposit' ? 'DEPOSIT (DEMO)' : 'WITHDRAW (DEMO)';
-            document.getElementById('cash-modal').dataset.type = type;
-            document.getElementById('cash-amount').value = '';
-            document.getElementById('cash-modal').classList.remove('hidden');
+            if ((type === 'deposit' && c.depositsPaused) || (type === 'withdraw' && c.withdrawalsPaused)) {
+                return showToast(`${type === 'deposit' ? 'Deposits' : 'Withdrawals'} are currently paused.`, 'error');
+            }
+
+            const isDeposit = type === 'deposit';
+            const modal = document.getElementById('cash-modal');
+            document.getElementById('cash-modal-title').textContent = isDeposit
+                ? 'DEPOSIT DONUT SMP MONEY'
+                : 'WITHDRAW DONUT SMP MONEY';
+
+            document.getElementById('cash-modal-body').innerHTML = isDeposit
+                ? `<p class="text-[#bdbdbd] leading-relaxed">To deposit Donut SMP money, join the Discord server and make a ticket.</p>
+                   <div class="mt-5 bg-[#111] border border-[#315a3b] p-4 text-sm text-[#d7ead9]">
+                     <b class="text-white block mb-1">Deposit instructions</b>
+                     Join the Discord, create a ticket, and tell staff how much Donut SMP money you want to deposit.
+                   </div>
+                   <a href="${DISCORD_INVITE_URL}" target="_blank" rel="noopener noreferrer" class="mt-5 w-full py-3 bg-[#5865F2] hover:bg-[#6873f5] text-white font-bold text-center block rounded-sm">
+                     <i class="fa-brands fa-discord mr-2"></i>JOIN DISCORD & MAKE A TICKET
+                   </a>`
+                : `<p class="text-[#bdbdbd] leading-relaxed">Enter how much Donut SMP money you want to withdraw. The amount is removed from your balance and a withdrawal code is generated.</p>
+                   <div class="mt-5">
+                     <label class="block text-xs font-bold text-[#888] uppercase tracking-wider mb-2">Withdrawal amount</label>
+                     <input id="cash-amount" type="number" min="1" step="1" class="w-full mc-input p-3 font-bold" placeholder="Enter amount">
+                   </div>
+                   <button onclick="submitWithdrawalRequest()" class="mt-4 w-full py-3 mc-button-green rounded-sm">
+                     GENERATE WITHDRAWAL CODE
+                   </button>
+                   <div id="cash-result" class="hidden mt-5 bg-[#111] border border-[#315a3b] p-4">
+                     <div class="text-xs font-bold text-[#888] uppercase tracking-wider mb-2">Your withdrawal code</div>
+                     <div id="cash-code" class="break-all font-mono text-sm text-mc-gold"></div>
+                     <div class="mt-3 text-xs text-mc-muted">Copy this code and put it in your Discord ticket.</div>
+                     <a href="${DISCORD_INVITE_URL}" target="_blank" rel="noopener noreferrer" class="mt-3 inline-block text-sm font-bold text-[#8ea1ff] hover:text-white">
+                       <i class="fa-brands fa-discord mr-1"></i> Open Discord
+                     </a>
+                   </div>`;
+
+            modal.dataset.type = type;
+            modal.classList.remove('hidden');
         }
-        function submitCashRequest() {
-            const type = document.getElementById('cash-modal').dataset.type;
-            const amount = Number(document.getElementById('cash-amount').value);
-            if (!Number.isFinite(amount) || amount <= 0) return showToast('Enter a valid amount.', 'error');
+
+        const CODE_PREFIX = 'BBX';
+        const CODE_SECRET = 'blockbet-donut-v1';
+        function checksum(text) { let h=0x811c9dc5; for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 0x01000193); } return (h>>>0).toString(36).toUpperCase(); }
+        function encodePayload(payload) {
+            const raw = JSON.stringify(payload);
+            const mixed = raw.split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0)^CODE_SECRET.charCodeAt(i%CODE_SECRET.length))).join('');
+            return btoa(unescape(encodeURIComponent(mixed))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+        }
+        function decodePayload(code) {
+            try {
+                const clean = code.trim().toUpperCase();
+                if (!clean.startsWith(CODE_PREFIX+'-')) return null;
+                const body = code.trim().slice(CODE_PREFIX.length+1);
+                const [encoded, sig] = body.split('.');
+                if (!encoded || !sig || checksum(encoded) !== sig) return null;
+                const b64 = encoded.replace(/-/g,'+').replace(/_/g,'/');
+                const mixed = decodeURIComponent(escape(atob(b64 + '==='.slice((b64.length+3)%4))));
+                const raw = mixed.split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0)^CODE_SECRET.charCodeAt(i%CODE_SECRET.length))).join('');
+                const data = JSON.parse(raw);
+                return data && Number.isFinite(Number(data.amount)) && Number(data.amount)>0 ? data : null;
+            } catch { return null; }
+        }
+        
+        function makeMoneyCode(amount, kind='credit') {
+            const payload={v:1,kind,amount:Number(amount),id:crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2),t:Date.now()};
+            const encoded=encodePayload(payload); return `${CODE_PREFIX}-${encoded}.${checksum(encoded)}`;
+        }
+        function submitWithdrawalRequest() {
+            if (!requireAuth()) return;
+
+            const amountInput = document.getElementById('cash-amount');
+            const amount = Number(amountInput?.value);
+            if (!Number.isFinite(amount) || amount <= 0) {
+                return showToast('Enter a valid withdrawal amount.', 'error');
+            }
+
             const c = getCashStatus();
-            if ((type==='deposit' && c.depositsPaused) || (type==='withdraw' && c.withdrawalsPaused)) return showToast('That action is currently paused.', 'error');
-            const code = `BB-${Math.random().toString(36).slice(2,8).toUpperCase()}-${Date.now().toString().slice(-5)}`;
+            if (c.withdrawalsPaused) return showToast('Withdrawals are currently paused.', 'error');
+            if (amount > state.balance) return showToast('Insufficient balance.', 'error');
+
+            state.balance -= amount;
+            updateBalanceDisplay();
+
+            const code = makeMoneyCode(amount, 'withdrawal');
             document.getElementById('cash-code').textContent = code;
             document.getElementById('cash-result').classList.remove('hidden');
-            showToast(`Request code generated for ${formatMoney(amount)}.`);
+
+            showToast(`${formatMoney(amount)} removed and withdrawal code created.`);
         }
+
+        function renderCodesPanel() { const a=document.getElementById('codes-admin-area'); if(a) a.classList.toggle('hidden',!isAdmin()); }
+        function getRedeemed(){try{return JSON.parse(localStorage.getItem('blockbet_redeemed_codes')||'[]')}catch{return[]}}
+        function redeemCode(){ if(!requireAuth())return; const input=document.getElementById('redeem-code-input'); const code=input.value.trim(); const data=decodePayload(code); if(!data) return showToast('Invalid or corrupted code.','error'); if(data.kind!=='credit') return showToast('That code is not a redeemable money code.','error'); const used=getRedeemed(); if(used.includes(data.id)) return showToast('That code was already redeemed in this browser.','error'); used.push(data.id); localStorage.setItem('blockbet_redeemed_codes',JSON.stringify(used)); state.balance+=Number(data.amount); updateBalanceDisplay(); input.value=''; showToast(`Redeemed ${formatMoney(data.amount)}!`); }
+        function generateAdminCode(){ if(!isAdmin())return; const amt=Number(document.getElementById('admin-code-amount').value); if(!Number.isFinite(amt)||amt<=0)return showToast('Enter a valid amount.','error'); const code=makeMoneyCode(amt,'credit'); const out=document.getElementById('admin-code-output'); out.textContent=code; out.classList.remove('hidden'); }
+        function decodeAdminCode(){ if(!isAdmin())return; const data=decodePayload(document.getElementById('admin-decode-input').value); const out=document.getElementById('admin-code-output'); out.textContent=data?`Decoded: ${data.kind} | ${formatMoney(data.amount)} | ID ${data.id}`:'Could not decode this code.'; out.classList.remove('hidden'); }
 
         // Auth
         function applyLoginState(username, isNew = false) {
@@ -434,11 +526,12 @@
             const adminBtn = document.getElementById('admin-button');
             if (adminBtn) adminBtn.classList.toggle('hidden', username.toLowerCase() !== ADMIN_USERNAME);
             renderAnnouncement();
+            renderCodesPanel();
             
-            // Fetch Avatar from API
+            // Switch to a more reliable Minecraft avatar API
             const avatar = document.getElementById('profile-avatar');
-            avatar.onerror = () => { avatar.onerror = null; avatar.src = `https://mc-heads.net/avatar/${encodeURIComponent(username)}/64`; };
-            avatar.src = `https://minotar.net/avatar/${encodeURIComponent(username)}/64`;
+            avatar.src = `https://crafatar.com/avatars/${encodeURIComponent(username)}?size=64&overlay=true`;
+            avatar.onerror = () => { avatar.onerror = null; avatar.src = `https://minotar.net/avatar/${encodeURIComponent(username)}/64`; };
             
             updateBalanceDisplay();
             if(isNew) showToast(`Welcome ${username}! Received $5.00M bonus.`);
@@ -453,6 +546,16 @@
                 applyLoginState(username, true);
             }
         }
+
+        function toggleProfileMenu(event) {
+            event.stopPropagation();
+            document.getElementById('profile-dropdown').classList.toggle('hidden');
+        }
+
+        document.addEventListener('click', () => {
+            const dropdown = document.getElementById('profile-dropdown');
+            if (dropdown) dropdown.classList.add('hidden');
+        });
 
         function handleLogout() {
             state.user = null;
@@ -504,14 +607,24 @@
                 document.querySelectorAll('.game-canvas').forEach(el => el.classList.add('hidden'));
                 document.querySelectorAll('.game-controls').forEach(el => el.classList.add('hidden'));
                 
-                document.getElementById(`canvas-${view}`).classList.remove('hidden');
-                document.getElementById(`controls-${view}`).classList.remove('hidden');
+                const canvasEl = document.getElementById(`canvas-${view}`);
+                if (canvasEl) canvasEl.classList.remove('hidden');
                 
-                const titles = { 'mines': 'MINES', 'crash': 'CRASH', 'coinflip': 'COINFLIP' };
+                // FIXED: Safety check before trying to remove class to prevent codes tab crash
+                const controlsEl = document.getElementById(`controls-${view}`);
+                if (controlsEl) {
+                    controlsEl.classList.remove('hidden');
+                }
+                
+                const titles = { 'mines': 'MINES', 'crash': 'CRASH', 'coinflip': 'COINFLIP', 'codes': 'CODES' };
                 document.getElementById('game-header-title').textContent = titles[view] || view;
 
                 if(view === 'mines' && !state.mines.active) renderMinesGrid();
                 if(view === 'crash') setupCrashCanvas();
+                if(view === 'codes') { 
+                    document.getElementById('side-bet-panel').classList.add('hidden'); 
+                    renderCodesPanel(); 
+                }
             }
         }
 
@@ -554,7 +667,8 @@
         
         <div class="h-16 flex items-center justify-between px-4 border-b border-mc-border bg-[#111] cursor-pointer hover:bg-[#1a1a1a] transition-colors">
             <div class="flex items-center">
-                <img src="https://minecraft.wiki/images/grass_block" class="w-6 h-6 mr-3 pixelated">
+                <!-- Swapped to reliable raw github asset -->
+                <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/grass_block_side.png" class="w-6 h-6 mr-3 pixelated">
                 <div>
                     <div class="text-xs text-mc-muted font-bold">BLOCKBET</div>
                     <div class="text-sm font-semibold">Casino</div>
@@ -575,18 +689,23 @@
                 <div class="px-4 py-2 text-[10px] font-bold text-[#666] uppercase tracking-wider">Originals</div>
                 
                 <div id="nav-mines" onclick="navigateTo('mines')" class="nav-item">
-                    <img src="https://minecraft.wiki/images/tnt" class="w-5 h-5 mr-3 pixelated">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/tnt_side.png" class="w-5 h-5 mr-3 pixelated">
                     <span class="font-bold text-sm tracking-wide">MINES</span>
                 </div>
 
                 <div id="nav-crash" onclick="navigateTo('crash')" class="nav-item">
-                    <img src="https://minecraft.wiki/images/firework_rocket" class="w-5 h-5 mr-3 pixelated" style="transform: rotate(45deg);">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/firework_rocket.png" class="w-5 h-5 mr-3 pixelated" style="transform: rotate(45deg);">
                     <span class="font-bold text-sm tracking-wide">CRASH</span>
                 </div>
 
                 <div id="nav-coinflip" onclick="navigateTo('coinflip')" class="nav-item">
-                    <img src="https://minecraft.wiki/images/gold_ingot" class="w-5 h-5 mr-3 pixelated">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_ingot.png" class="w-5 h-5 mr-3 pixelated">
                     <span class="font-bold text-sm tracking-wide">COINFLIP</span>
+                </div>
+
+                <div id="nav-codes" onclick="navigateTo('codes')" class="nav-item">
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/enchanted_book.png" class="w-5 h-5 mr-3 pixelated">
+                    <span class="font-bold text-sm tracking-wide">CODES</span>
                 </div>
             </div>
         </div>
@@ -594,7 +713,7 @@
         <div class="border-t border-mc-border bg-[#111]">
             <div class="px-4 py-3 flex justify-between items-center text-xs text-[#666]">
                 <span>Status: <span class="text-mc-green font-bold">API Online</span></span>
-                <span>v2.0.1</span>
+                <span>v2.0.2</span>
             </div>
         </div>
     </aside>
@@ -629,17 +748,19 @@
                         </div>
                         <button onclick="openCashModal('deposit')" class="ml-1 px-4 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">DEPOSIT</button>
                         <button onclick="openCashModal('withdraw')" class="ml-1 px-4 py-1 bg-[#8a5a18] hover:bg-[#a36c1f] text-white font-bold text-xs transition-colors shadow-mc-btn rounded-sm">WITHDRAW</button>
-                        <button id="admin-button" onclick="openAdminPanel()" class="hidden ml-1 px-3 py-1 bg-[#6b3fa0] hover:bg-[#7b4bb0] text-white font-bold text-xs rounded-sm">ADMIN</button>
+                        <button onclick="manualSaveGame()" class="ml-1 px-3 py-1 bg-[#313131] hover:bg-[#454545] text-white font-bold text-xs rounded-sm">SAVE</button><button id="admin-button" onclick="openAdminPanel()" class="hidden ml-1 px-3 py-1 bg-[#6b3fa0] hover:bg-[#7b4bb0] text-white font-bold text-xs rounded-sm">ADMIN</button>
                     </div>
 
                     <div class="flex items-center space-x-3 bg-[#1e1e1e] p-1.5 rounded-sm border border-mc-border shadow-inner relative group cursor-pointer">
                         <img id="profile-avatar" src="" class="w-8 h-8 pixelated border border-[#111] bg-[#444]" alt="Avatar">
                         <span id="display-username" class="text-sm font-bold pr-2 text-white"></span>
                         
-                        <!-- Dropdown -->
-                        <div class="absolute top-full right-0 mt-2 w-48 bg-[#161616] border border-mc-border shadow-xl hidden group-hover:block z-50">
-                            <div onclick="handleLogout()" class="px-4 py-3 text-sm text-[#ff5555] hover:bg-[#313131] font-bold border-b border-[#313131]">
-                                <i class="fa-solid fa-right-from-bracket mr-2"></i> Logout
+                        <!-- FIXED Dropdown: changed mt-2 to pt-2 inner wrap to bridge gap so hover won't drop -->
+                        <div class="absolute top-full right-0 pt-2 w-48 hidden group-hover:block z-50">
+                            <div class="bg-[#161616] border border-mc-border shadow-xl rounded-sm overflow-hidden">
+                                <div onclick="handleLogout()" class="px-4 py-3 text-sm text-[#ff5555] hover:bg-[#313131] font-bold border-b border-[#313131] cursor-pointer transition-colors">
+                                    <i class="fa-solid fa-right-from-bracket mr-2"></i> Logout
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -651,23 +772,21 @@
             
             <div id="home-view" class="content-section p-8 max-w-6xl mx-auto space-y-8">
                 
-                <div class="relative w-full h-[350px] bg-[#161616] border border-mc-border rounded-sm overflow-hidden shadow-lg flex flex-col justify-end">
+                <div class="relative w-full min-h-[390px] bg-[#141414] border border-mc-border rounded-md overflow-hidden shadow-2xl flex flex-col justify-end">
                     <!-- Techy dark background pattern -->
                     <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#454545 1px, transparent 1px); background-size: 20px 20px;"></div>
-                    <div class="absolute inset-0 bg-gradient-to-r from-[#111] via-[#161616]/80 to-transparent"></div>
+                    <div class="absolute inset-0 bg-gradient-to-r from-[#0d0d0d] via-[#151515]/90 to-transparent"></div><div class="absolute right-0 top-0 bottom-0 w-[48%] opacity-80 bg-[linear-gradient(135deg,#17341f,#1b1b1b_45%,#312218)]"></div>
                     
-                    <div class="relative z-10 p-10 flex justify-between items-center w-full">
+                    <div class="relative z-10 p-8 md:p-10 flex justify-between items-center w-full min-h-[390px]">
                         <div class="max-w-2xl">
                             <div class="flex items-center space-x-2 mb-4">
                                 <i class="fa-solid fa-gamepad text-mc-gold text-xs"></i>
-                                <span class="text-xs font-bold text-mc-gold uppercase tracking-wider">Minecraft-style demo casino</span>
+                                <span class="text-xs font-bold text-mc-gold uppercase tracking-wider">DONUT SMP CASINO</span>
                             </div>
                             <h1 class="text-5xl font-black text-white mb-4 tracking-tight drop-shadow-md">
-                                Play with <span class="text-cyan-400">fake money.</span>
+                                Play with <span class="text-cyan-400">Donut SMP money.</span>
                             </h1>
-                            <p class="text-base text-[#a8a8a8] mb-8 font-semibold max-w-lg leading-relaxed">
-                                Pick a game, place a bet, and track your real results for this demo. No real money is used.
-                            </p>
+                            <p class="text-base text-[#b7b7b7] mb-5 font-semibold max-w-xl leading-relaxed">Play your favorite games with Donut SMP money.</p><a href="https://discord.gg/XRMPwZ3VRy" target="_blank" rel="noopener noreferrer" class="mb-8 inline-flex items-center gap-2 border border-[#315a3b] bg-[#122016] hover:bg-[#182b1c] px-4 py-3 text-sm text-[#d7ead9] rounded-sm transition-colors"><i class="fa-brands fa-discord text-lg"></i><span><b>JOIN THE DISCORD</b> to deposit or withdraw. Make a ticket to get started.</span></a>
                             
                             <div class="flex space-x-4">
                                 <button onclick="navigateTo('crash')" class="px-8 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-lg shadow-mc-btn transition-colors rounded-sm flex items-center gap-2">
@@ -679,16 +798,22 @@
                             </div>
                         </div>
                         
-                        <!-- Decorative Hero Image (Minecraft blocks CSS art representation) -->
-                        <div class="hidden lg:flex relative w-64 h-64 perspective-1000">
-                           <img src="https://minecraft.wiki/images/diamond_block" class="absolute w-32 h-32 pixelated top-0 left-1/2 -translate-x-1/2 drop-shadow-[0_20px_20px_rgba(0,0,0,0.5)] z-20 hover:-translate-y-4 transition-transform duration-500">
-                           <img src="https://minecraft.wiki/images/grass_block" class="absolute w-24 h-24 pixelated bottom-4 left-0 drop-shadow-xl z-10 opacity-80">
-                           <img src="https://minecraft.wiki/images/tnt" class="absolute w-20 h-20 pixelated bottom-10 right-4 drop-shadow-xl z-10 opacity-80">
+                        <!-- Minecraft-style feature panel -->
+                        <div class="hidden lg:flex relative w-[420px] h-[250px] mr-2 overflow-hidden rounded-sm border border-[#3d3d3d] shadow-2xl items-end">
+                           <div class="absolute inset-0 bg-gradient-to-br from-[#2d5b45] via-[#274a36] to-[#1a1a1a]"></div>
+                           <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(45deg, rgba(255,255,255,.04) 25%, transparent 25%, transparent 75%, rgba(255,255,255,.04) 75%); background-size: 26px 26px;"></div>
+                           <div class="relative z-10 p-6 w-full flex items-end justify-between">
+                               <div><div class="text-[10px] font-black tracking-[.25em] text-[#c6e9ce] mb-2">BLOCKBET x DONUT SMP</div><div class="text-2xl font-black text-white leading-tight">BET. WIN.<br>BUILD YOUR STACK.</div></div>
+                               <div class="flex gap-2">
+                                   <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_ingot.png" class="w-14 h-14 pixelated drop-shadow-xl">
+                                   <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/emerald.png" class="w-14 h-14 pixelated drop-shadow-xl">
+                               </div>
+                           </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Live Demo Stats -->
+                <!-- Live Stats -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
                         <div class="absolute top-0 left-0 w-1 h-full bg-mc-gold"></div>
@@ -700,7 +825,7 @@
                         <div class="absolute top-0 left-0 w-1 h-full bg-mc-green"></div>
                         <div class="text-[10px] font-bold text-[#888] uppercase tracking-wider mb-2">Total won today</div>
                         <div id="stat-total-won" class="text-2xl font-black text-white mb-1">$0.00</div>
-                        <div class="text-xs text-mc-muted">Real winnings from games played today on this demo.</div>
+                        <div class="text-xs text-mc-muted">Winnings recorded from games played today.</div>
                     </div>
                     <div class="bg-[#161616] border border-mc-border p-6 rounded-sm relative overflow-hidden">
                         <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
@@ -726,8 +851,9 @@
                             <label class="text-xs font-bold text-[#888] uppercase tracking-wider mb-2 block">Bet Amount</label>
                             
                             <div class="relative flex items-center mb-3">
-                                <span class="absolute left-3 text-mc-muted font-bold"><img src="https://minecraft.wiki/images/gold_nugget" class="w-4 h-4 pixelated"></span>
-                                <!-- Changed type to text to handle custom input cleanly -->
+                                <span class="absolute left-3 text-mc-muted font-bold">
+                                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_nugget.png" class="w-4 h-4 pixelated">
+                                </span>
                                 <input type="text" id="universal-bet-input" value="100" class="w-full mc-input py-2.5 pl-9 pr-3 font-bold text-lg rounded-sm" oninput="handleBetInput(this.value)">
                             </div>
                             
@@ -779,10 +905,10 @@
                                     <label class="text-xs font-bold text-[#888] uppercase tracking-wider mb-2 block">Choose Side</label>
                                     <div class="grid grid-cols-2 gap-2">
                                         <button onclick="setCoinflipChoice('gold')" id="cf-btn-gold" class="py-6 bg-[#2b2b2b] border-2 border-mc-gold text-white font-bold flex flex-col items-center justify-center transition-colors shadow-inner rounded-sm">
-                                            <img src="https://minecraft.wiki/images/gold_ingot" class="w-10 h-10 pixelated mb-2 drop-shadow-md">
+                                            <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_ingot.png" class="w-10 h-10 pixelated mb-2 drop-shadow-md">
                                         </button>
                                         <button onclick="setCoinflipChoice('iron')" id="cf-btn-iron" class="py-6 bg-[#1e1e1e] border-2 border-[#454545] text-[#888] font-bold flex flex-col items-center justify-center transition-colors rounded-sm">
-                                            <img src="https://minecraft.wiki/images/iron_ingot" class="w-10 h-10 pixelated mb-2 opacity-50">
+                                            <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/iron_ingot.png" class="w-10 h-10 pixelated mb-2 opacity-50">
                                         </button>
                                     </div>
                                 </div>
@@ -815,7 +941,7 @@
                             <div id="crash-graph-container">
                                 <canvas id="crash-canvas" class="absolute inset-0 w-full h-full"></canvas>
                                 <!-- The Rocket -->
-                                <img id="crash-rocket" src="https://minecraft.wiki/images/firework_rocket" class="pixelated" style="display:none; transform-origin: center;">
+                                <img id="crash-rocket" src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/firework_rocket.png" class="pixelated" style="display:none; transform-origin: center;">
                             </div>
 
                             <!-- Central Multiplier Text -->
@@ -829,17 +955,34 @@
                             </div>
                         </div>
 
+                        <!-- CODES CANVAS -->
+                        <div id="canvas-codes" class="game-canvas z-10 w-full h-full hidden flex flex-col items-center justify-center bg-[#1a1a1a] p-8">
+                            <div class="w-full max-w-2xl bg-[#161616] border border-mc-border p-6 shadow-xl">
+                                <div class="flex items-center gap-4 mb-5">
+                                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/enchanted_book.png" class="w-14 h-14 pixelated">
+                                    <div><h3 class="text-2xl font-black">REDEEM CODE</h3><p class="text-sm text-mc-muted">Redeem Donut SMP balance codes generated by the admin.</p></div>
+                                </div>
+                                <div class="flex gap-2"><input id="redeem-code-input" class="flex-1 mc-input p-3 font-mono" placeholder="Paste your BB code"><button onclick="redeemCode()" class="mc-button-green px-5">REDEEM</button></div>
+                                <div id="codes-admin-area" class="hidden mt-6 border-t border-[#313131] pt-5">
+                                    <div class="font-black text-[#c084fc] mb-3">BOOM154 CODE TOOLS</div>
+                                    <div class="flex gap-2 mb-3"><input id="admin-code-amount" type="number" min="1" class="flex-1 mc-input p-3" placeholder="Amount"><button onclick="generateAdminCode()" class="bg-[#6b3fa0] px-5 font-bold">MAKE CODE</button></div>
+                                    <input id="admin-decode-input" class="w-full mc-input p-3 font-mono mb-2" placeholder="Paste code to decode"><button onclick="decodeAdminCode()" class="w-full py-3 bg-[#313131] font-bold">DECODE CODE</button>
+                                    <div id="admin-code-output" class="mt-3 p-3 bg-[#111] font-mono text-sm text-mc-gold hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- COINFLIP CANVAS -->
                         <div id="canvas-coinflip" class="game-canvas z-10 w-full h-full hidden flex flex-col items-center justify-center bg-[#1a1a1a]">
                             <div class="relative w-48 h-48 mb-12" style="perspective: 1000px;">
                                 <div id="cf-coin" class="w-full h-full relative transition-transform duration-1000" style="transform-style: preserve-3d;">
                                     <!-- Gold -->
                                     <div class="absolute inset-0 bg-[#e6c200] border-4 border-[#b39700] rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(230,194,0,0.3)]" style="backface-visibility: hidden;">
-                                        <img src="https://minecraft.wiki/images/gold_ingot" class="w-24 h-24 pixelated drop-shadow-md">
+                                        <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/gold_ingot.png" class="w-24 h-24 pixelated drop-shadow-md">
                                     </div>
                                     <!-- Iron -->
                                     <div class="absolute inset-0 bg-[#d8d8d8] border-4 border-[#a0a0a0] rounded-full flex items-center justify-center shadow-xl" style="backface-visibility: hidden; transform: rotateY(180deg);">
-                                        <img src="https://minecraft.wiki/images/iron_ingot" class="w-24 h-24 pixelated drop-shadow-md">
+                                        <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/iron_ingot.png" class="w-24 h-24 pixelated drop-shadow-md">
                                     </div>
                                 </div>
                             </div>
@@ -852,7 +995,6 @@
         </main>
     </div>
 
-    <!-- Sign Up/Login Modal -->
     <div id="auth-modal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center">
         <div class="bg-[#161616] border-2 border-mc-border shadow-2xl w-[400px] rounded-sm overflow-hidden">
             <div class="bg-[#111] p-4 border-b border-[#313131] flex justify-between items-center">
@@ -864,9 +1006,9 @@
             
             <div class="p-6">
                 <div class="bg-[#1b4d2a] bg-opacity-20 border border-mc-green p-4 mb-6 text-sm font-semibold flex flex-col items-center text-center rounded-sm">
-                    <img src="https://minecraft.wiki/images/experience_bottle" class="w-8 h-8 pixelated mb-2 drop-shadow-md">
-                    <span class="text-white">Get a free <span class="text-mc-green font-bold">$5.00M</span> to test games.</span>
-                    <span class="text-xs text-mc-muted mt-1">No password needed for demo.</span>
+                    <img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/experience_bottle.png" class="w-8 h-8 pixelated mb-2 drop-shadow-md">
+                    <span class="text-white">Your balance is saved on this device after you sign in.</span>
+                    <span class="text-xs text-mc-muted mt-1">No password needed.</span>
                 </div>
 
                 <form onsubmit="handleLogin(event)">
@@ -948,11 +1090,11 @@
 
             if (tData.isMine) {
                 tEl.classList.add('revealed', 'bomb');
-                tEl.innerHTML = '<img src="https://minecraft.wiki/images/tnt" class="w-10 h-10 pixelated drop-shadow-md">';
+                tEl.innerHTML = '<img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/tnt_side.png" class="w-10 h-10 pixelated drop-shadow-md">';
                 endMinesGame(false);
             } else {
                 tEl.classList.add('revealed', 'gem');
-                tEl.innerHTML = '<img src="https://minecraft.wiki/images/emerald" class="w-10 h-10 pixelated drop-shadow-md">';
+                tEl.innerHTML = '<img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/emerald.png" class="w-10 h-10 pixelated drop-shadow-md">';
                 
                 state.mines.history.push(index);
                 
@@ -984,9 +1126,9 @@
                     el.classList.add('revealed');
                     el.style.opacity = '0.3';
                     if (t.isMine) {
-                        el.innerHTML = '<img src="https://minecraft.wiki/images/tnt" class="w-8 h-8 pixelated grayscale">';
+                        el.innerHTML = '<img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/tnt_side.png" class="w-8 h-8 pixelated grayscale">';
                     } else {
-                        el.innerHTML = '<img src="https://minecraft.wiki/images/emerald" class="w-8 h-8 pixelated grayscale opacity-50">';
+                        el.innerHTML = '<img src="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/emerald.png" class="w-8 h-8 pixelated grayscale opacity-50">';
                     }
                 }
             });
@@ -1272,7 +1414,7 @@
             
             statusDisplay.classList.remove('hidden');
             
-            rocket.src = 'https://minecraft.wiki/images/campfire'; // Explosion mock
+            rocket.src = 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/block/campfire_fire_0.png'; // Explosion mock
             rocket.style.transform = 'translate(-50%, -50%) scale(1.5)';
             
             if (state.crash.hasBet && !state.crash.cashedOut) {
@@ -1288,7 +1430,7 @@
                 btn.className = 'w-full py-4 mc-button-green text-lg rounded-sm';
                 btn.disabled = false;
                 document.getElementById('universal-bet-input').disabled = false;
-                rocket.src = 'https://minecraft.wiki/images/firework_rocket';
+                rocket.src = 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.1/assets/minecraft/textures/item/firework_rocket.png';
                 state.crash.hasBet = false;
                 drawCrashIdle();
             }, 3000);
@@ -1307,7 +1449,18 @@
         };
     </script>
 
-    <div id="cash-modal" class="hidden fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4"><div class="w-full max-w-md bg-[#161616] border border-mc-border p-6 shadow-2xl"><h2 id="cash-modal-title" class="text-xl font-black mb-4">DEPOSIT (DEMO)</h2><input id="cash-amount" type="number" min="1" placeholder="Amount" class="w-full bg-[#222] border border-[#555] p-3 text-white mb-4"><button onclick="submitCashRequest()" class="w-full py-3 mc-button-green">GENERATE REQUEST CODE</button><div id="cash-result" class="hidden mt-4 text-center"><p class="text-mc-muted text-sm">Make a ticket in your Discord server and send this code:</p><div id="cash-code" class="mt-2 p-3 bg-[#222] font-mono font-black text-mc-gold"></div></div><button onclick="document.getElementById('cash-modal').classList.add('hidden')" class="mt-4 text-sm text-mc-muted">CLOSE</button></div></div>
+    <div id="cash-modal" class="hidden fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-[#161616] border border-mc-border p-6 shadow-2xl rounded-sm">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 flex items-center justify-center bg-[#202b23] border border-[#315a3b]">
+                    <i class="fa-brands fa-discord text-xl text-[#d7ead9]"></i>
+                </div>
+                <h2 id="cash-modal-title" class="text-xl font-black">DONUT SMP MONEY</h2>
+            </div>
+            <div id="cash-modal-body"></div>
+            <button onclick="document.getElementById('cash-modal').classList.add('hidden')" class="mt-5 w-full py-3 bg-[#313131] hover:bg-[#454545] font-bold rounded-sm">CLOSE</button>
+        </div>
+    </div>
     <div id="admin-modal" class="hidden fixed inset-0 z-[130] bg-black/70 flex items-center justify-center p-4"><div class="w-full max-w-lg bg-[#161616] border border-[#6b3fa0] p-6 shadow-2xl"><h2 class="text-xl font-black mb-4">BOOM154 ADMIN PANEL</h2><label class="text-sm font-bold">Announcement</label><textarea id="admin-announcement" class="w-full mt-1 bg-[#222] border border-[#555] p-3 text-white h-24" placeholder="Announcement text"></textarea><label class="block mt-4 text-sm font-bold">Show for how many minutes?</label><input id="admin-duration" type="number" min="1" value="60" class="w-full mt-1 bg-[#222] border border-[#555] p-3 text-white"><label class="flex items-center gap-3 mt-4"><input id="pause-deposits" type="checkbox"> Pause deposits</label><label class="flex items-center gap-3 mt-2"><input id="pause-withdrawals" type="checkbox"> Pause withdrawals</label><button onclick="saveAdminSettings()" class="w-full mt-5 py-3 bg-[#6b3fa0] font-bold">SAVE SETTINGS</button><button onclick="document.getElementById('admin-modal').classList.add('hidden')" class="mt-4 text-sm text-mc-muted">CLOSE</button></div></div>
 
 </body>
